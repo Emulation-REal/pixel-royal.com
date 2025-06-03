@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel Royale</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #222;
+      font-family: Arial, sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      background: #3a3a3a;
+      border: 2px solid #111;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      z-index: 10;
+    }
+
+    #hud {
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 10px;
+    }
+
+    #inventory {
+      margin-top: 10px;
+      display: flex;
+      gap: 5px;
+    }
+
+    .slot {
+      width: 40px;
+      height: 40px;
+      background-color: #666;
+      border: 2px solid #aaa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+  <div id="ui">
+    <div id="hud">
+      <div id="health">HP: 100</div>
+      <div id="shield">Shield: 0</div>
+      <div id="inventory">
+        <div class="slot">1</div>
+        <div class="slot">2</div>
+        <div class="slot">3</div>
+        <div class="slot">4</div>
+        <div class="slot">5</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
