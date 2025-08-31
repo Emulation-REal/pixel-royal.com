@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Interactive 3D Black Hole System — Emulation Edition</title>
+<title>Black Hole — Raytrace Edition</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   html,body { height:100%; margin:0; background:#000; overflow:hidden; font-family: "Segoe UI", Roboto, Arial;}
@@ -13,55 +13,57 @@
     backdrop-filter: blur(6px); box-shadow: 0 6px 24px rgba(0,0,0,0.6);
   }
   #tips { position:absolute; top:12px; left:12px; color:#fff8; font-size:13px; }
-  button { background:#1a6cff; color:white; border:0; padding:6px 10px; border-radius:6px; cursor:pointer; }
-  a { color:#9ef; }
+  button { background:#1a6cff; color:white; border:0; padding:6px 10px; border-radius:6px; cursor:pointer; margin-right:6px;}
   .dg { z-index: 1000 !important; } /* dat.GUI on top */
+  #stats { position:absolute; right:12px; top:12px; z-index:2000; }
 </style>
 </head>
 <body>
 <div id="container"></div>
 <div id="tips">
-  Click the view to lock the mouse & enable WASD movement. Use the GUI (top-right) to tweak everything.<br>
-  Spawn stars/planets/particle bursts, crank mass up for dramatic lensing, and show off to everyone.
+  Click to lock pointer (WASD to move). Use GUI to toggle Raytrace Mode, tune steps/quality. Press H for controls.
 </div>
 <div id="overlay">
-  <div><strong>Black Hole Sim</strong> — realistic-ish lensing + interactive generation</div>
+  <div><strong>Black Hole — Raytrace Edition</strong></div>
   <div style="margin-top:6px;">
     <button id="spawnStar">Spawn Star</button>
     <button id="spawnPlanet">Spawn Planet</button>
     <button id="burst">Burst Particles</button>
+    <button id="snapshot">Snapshot</button>
     <button id="resetScene">Reset Scene</button>
   </div>
 </div>
 
-<!-- THREE.js and dat.GUI via CDN -->
+<!-- Libraries -->
 <script src="https://unpkg.com/three@0.150.0/build/three.min.js"></script>
 <script src="https://unpkg.com/three@0.150.0/examples/js/controls/PointerLockControls.js"></script>
 <script src="https://unpkg.com/three@0.150.0/examples/js/postprocessing/EffectComposer.js"></script>
 <script src="https://unpkg.com/three@0.150.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://unpkg.com/three@0.150.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://unpkg.com/dat.gui@0.7.9/build/dat.gui.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
 
 <script>
-/*
-  Interactive 3D Black Hole System
-  - Screen-space lensing shader approximates GR deflection (scaled for visuals).
-  - Dynamically spawn stars/planets/particles, accretion disk rendering, camera movement.
-  - Controls via dat.GUI and on-screen buttons.
-*/
+/* ------------------------------------------------------------
+   Enhanced Black Hole System with Raytrace-like Shader & FPS
+   - Raytrace passes samples along iteratively-deflected ray (visual approx.)
+   - FPS tracker (stats.js)
+   - Snapshot export
+   - Adaptive pixel-ratio fallback for performance
+   ------------------------------------------------------------ */
 
-// ---------- Scene & Renderer ----------
+// ----- Setup renderer, scene, camera, controls -----
 const container = document.getElementById('container');
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x000000, 0.0012);
 
-// ---------- Camera & Controls ----------
-const camera = new THREE.PerspectiveCamera(70, container.clientWidth/container.clientHeight, 0.1, 5000);
+const camera = new THREE.PerspectiveCamera(70, container.clientWidth / container.clientHeight, 0.1, 5000);
 camera.position.set(0, 8, 35);
 
 const controls = new THREE.PointerLockControls(camera, renderer.domElement);
@@ -69,55 +71,37 @@ let move = { forward:false, backward:false, left:false, right:false };
 const velocity = new THREE.Vector3();
 
 document.addEventListener('click', () => {
-  if (document.pointerLockElement !== renderer.domElement) {
-    controls.lock();
-  }
+  if (document.pointerLockElement !== renderer.domElement) controls.lock();
 });
-controls.addEventListener('lock', () => console.log('Pointer locked — WASD movement active'));
-controls.addEventListener('unlock', () => console.log('Pointer unlocked'));
-
-window.addEventListener('keydown', (e) => {
+window.addEventListener('keydown', (e)=>{
   if (e.code === 'KeyW') move.forward = true;
   if (e.code === 'KeyS') move.backward = true;
   if (e.code === 'KeyA') move.left = true;
   if (e.code === 'KeyD') move.right = true;
 });
-window.addEventListener('keyup', (e) => {
+window.addEventListener('keyup', (e)=>{
   if (e.code === 'KeyW') move.forward = false;
   if (e.code === 'KeyS') move.backward = false;
   if (e.code === 'KeyA') move.left = false;
   if (e.code === 'KeyD') move.right = false;
 });
 
-// ---------- Black Hole Visual (Sphere + event horizon) ----------
+// ----- Basic black hole & accretion visuals -----
 const BH = new THREE.Group();
 scene.add(BH);
 
-const bhGeometry = new THREE.SphereGeometry(1, 32, 32);
-const bhMaterial = new THREE.MeshBasicMaterial({ color:0x000000 });
-const bhMesh = new THREE.Mesh(bhGeometry, bhMaterial);
+const bhMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshBasicMaterial({ color:0x000000 }));
 BH.add(bhMesh);
 
-// horizon glow
-const horizonGeo = new THREE.RingGeometry(1.02, 1.6, 64);
-const horizonMat = new THREE.MeshBasicMaterial({ color:0xffaa66, side:THREE.DoubleSide, transparent:true, opacity:0.6 });
-const horizon = new THREE.Mesh(horizonGeo, horizonMat);
-horizon.rotation.x = Math.PI/2;
-BH.add(horizon);
+const horizon = new THREE.Mesh(new THREE.RingGeometry(1.02, 1.6, 64), new THREE.MeshBasicMaterial({ color:0xffaa66, side:THREE.DoubleSide, transparent:true, opacity:0.6 }));
+horizon.rotation.x = Math.PI/2; BH.add(horizon);
 
-// accretion disk (thin torus-ish)
-const accGeo = new THREE.RingGeometry(1.8, 8.0, 160, 1);
-const accMat = new THREE.MeshBasicMaterial({ color:0xff4500, side:THREE.DoubleSide, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending });
-const acc = new THREE.Mesh(accGeo, accMat);
-acc.rotation.x = Math.PI/2;
-acc.position.y = 0;
-BH.add(acc);
+const acc = new THREE.Mesh(new THREE.RingGeometry(1.8, 8.0, 160, 1), new THREE.MeshBasicMaterial({ color:0xff4500, side:THREE.DoubleSide, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending }));
+acc.rotation.x = Math.PI/2; BH.add(acc);
 
-// ---------- Starfield (points) ----------
-const starGroup = new THREE.Group();
-scene.add(starGroup);
-
-function createStarField(count=2000, radius=1500) {
+// ----- Starfield -----
+const starGroup = new THREE.Group(); scene.add(starGroup);
+function createStarField(count=2500, radius=1500){
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(count*3);
   const colors = new Float32Array(count*3);
@@ -135,14 +119,12 @@ function createStarField(count=2000, radius=1500) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors,3));
   const mat = new THREE.PointsMaterial({ size:1.2, vertexColors:true, sizeAttenuation:true });
-  const pts = new THREE.Points(geometry, mat);
-  starGroup.add(pts);
+  starGroup.add(new THREE.Points(geometry, mat));
 }
-createStarField(2500);
+createStarField();
 
-// ---------- Objects (planets & stars that orbit) ----------
+// ----- Orbiting objects & particles -----
 const orbiting = [];
-
 function spawnOrbiting(isPlanet=true) {
   const radius = 20 + Math.random()*220;
   const angle = Math.random()*Math.PI*2;
@@ -153,203 +135,247 @@ function spawnOrbiting(isPlanet=true) {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(Math.cos(angle)*radius, (Math.random()-0.5)*6, Math.sin(angle)*radius);
   scene.add(m);
-
-  // give orbital params
-  const orb = {
-    mesh: m,
-    radius,
-    angle,
-    speed: (0.2 + Math.random()*0.9) * (isPlanet ? 0.6 : 0.25) / Math.sqrt(radius) ,
-    tilt: (Math.random()-0.5)*0.4,
-    isPlanet
-  };
-  orbiting.push(orb);
+  orbiting.push({ mesh:m, radius, angle, speed:(0.2+Math.random()*0.9)*(isPlanet?0.6:0.25)/Math.sqrt(radius), tilt:(Math.random()-0.5)*0.4, isPlanet });
 }
+for(let i=0;i<6;i++) spawnOrbiting(Math.random()>0.5);
 
-// spawn a few initial orbiters
-for (let i=0;i<6;i++) spawnOrbiting(Math.random()>0.5);
-
-// ---------- Particles system for bursts ----------
-const particleGroup = new THREE.Group();
-scene.add(particleGroup);
-
-function burstParticles(count=200) {
+const particleGroup = new THREE.Group(); scene.add(particleGroup);
+function burstParticles(count=200){
   const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(count*3);
   const vel = [];
-  for (let i=0;i<count;i++){
+  for(let i=0;i<count;i++){
     pos[i*3]=0; pos[i*3+1]=0; pos[i*3+2]=0;
-    const dir = new THREE.Vector3((Math.random()-0.5), (Math.random()-0.5), (Math.random()-0.5)).normalize();
-    const speed = 5 + Math.random()*40;
-    vel.push(dir.multiplyScalar(speed));
+    const dir = new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).normalize();
+    vel.push(dir.multiplyScalar(5 + Math.random()*40));
   }
   geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
   const mat = new THREE.PointsMaterial({ size:0.9, transparent:true, opacity:0.9, blending:THREE.AdditiveBlending });
   const points = new THREE.Points(geo, mat);
   points.userData.vel = vel;
   particleGroup.add(points);
-  setTimeout(()=>{ particleGroup.remove(points); }, 7000);
+  setTimeout(()=> particleGroup.remove(points), 8000);
 }
 
-// ---------- Lights ----------
-const hemi = new THREE.HemisphereLight(0x99ccff, 0x222244, 0.6);
-scene.add(hemi);
-const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-dir.position.set(-10,20,15);
-scene.add(dir);
+// ----- Lights -----
+scene.add(new THREE.HemisphereLight(0x99ccff,0x222244,0.6));
+const dir = new THREE.DirectionalLight(0xffffff,0.8); dir.position.set(-10,20,15); scene.add(dir);
+scene.add(new THREE.AmbientLight(0x222222,0.6));
 
-// ---------- Postprocessing: Screen-space lensing shader ----------
+// ----- Composer & passes -----
 const composer = new THREE.EffectComposer(renderer);
 const renderPass = new THREE.RenderPass(scene, camera);
 composer.addPass(renderPass);
 
-// Lens shader: samples the rendered texture and displaces UVs based on distance from BH center.
-// Uses a visually-scaled deflection formula approximating 4GM/(c^2 b). We provide GUI sliders to scale it.
+// Simple screen-space lensing shader (fast)
 const LENS_SHADER = {
   uniforms: {
-    "tDiffuse": { value: null },
-    "resolution": { value: new THREE.Vector2(container.clientWidth, container.clientHeight) },
-    "bhPos": { value: new THREE.Vector2(0.5, 0.5) }, // in screen UVs
-    "strength": { value: 0.6 }, // visual deflection strength
-    "eventHorizon": { value: 0.05 },
-    "spin": { value: 0.0 },
-    "time": { value: 0 }
+    tDiffuse: { value:null },
+    resolution: { value:new THREE.Vector2(container.clientWidth, container.clientHeight) },
+    bhPos: { value:new THREE.Vector2(0.5,0.5) },
+    strength: { value: 0.6 },
+    eventHorizon: { value: 0.05 },
+    spin: { value: 0.2 },
+    time: { value: 0 }
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
-  `,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse;
-    uniform vec2 resolution;
-    uniform vec2 bhPos;
-    uniform float strength;
-    uniform float eventHorizon;
-    uniform float spin;
-    uniform float time;
+    uniform sampler2D tDiffuse; uniform vec2 resolution; uniform vec2 bhPos;
+    uniform float strength; uniform float eventHorizon; uniform float spin; uniform float time;
     varying vec2 vUv;
-
-    // easing for samples
-    float ease(float x){ return smoothstep(0.0, 1.0, x); }
-
+    float ease(float x){ return smoothstep(0.0,1.0,x); }
     void main(){
-      vec2 uv = vUv;
-      vec2 toBH = uv - bhPos;
-      float dist = length(toBH);
-      // normalized impact parameter (b)
-      float b = dist;
-
-      // approximate deflection angle (scaled for visuals).
-      // theoretical: alpha = 4GM/(c^2 b). We'll fold constants into strength.
-      float alpha = strength / max(b, 0.0001);
-
-      // add spin-like skew (Kerr-ish visual)
-      float spinAngle = spin * 0.5 * sin(time*0.3 + dist*40.0);
-
-      // displacement direction is perpendicular to the radial vector (bending towards BH)
+      vec2 uv=vUv; vec2 toBH=uv-bhPos; float dist=length(toBH);
+      float b=dist; float alpha = strength / max(b, 0.0001);
       vec2 bendDir = normalize(toBH);
-      // perpendicular
       vec2 perp = vec2(-bendDir.y, bendDir.x);
-
-      // radial inward component (pulling light inward)
       vec2 inward = -bendDir * alpha * 0.35;
-      // tangential asymmetric spin / frame-dragging-ish effect
       vec2 tangential = perp * alpha * 0.8 * spin * 0.6;
-
-      // combine and scale by a falloff with distance (strong near BH)
       float falloff = exp(-dist*6.0) * ease(1.0 - smoothstep(eventHorizon, 0.6, dist));
       vec2 displacement = (inward + tangential) * falloff;
-
-      // sample from displaced uv
       vec2 sampleUV = uv + displacement;
-
-      // if inside event horizon, darken strongly and smear
       float inside = smoothstep(eventHorizon*1.1, eventHorizon, dist);
       vec4 color = texture2D(tDiffuse, sampleUV);
-
-      // smear / glow near horizon
-      float glow = exp(-pow(dist/eventHorizon, 2.0)*6.0);
-      vec4 glowColor = vec4(1.0, 0.55, 0.25, 1.0) * glow * 0.9;
-
-      // chromatic aberration effect for drama
+      float glow = exp(-pow(dist/eventHorizon,2.0)*6.0);
+      vec4 glowColor = vec4(1.0,0.55,0.25,1.0) * glow * 0.9;
       float ca = 0.008 * falloff;
-      vec3 col;
-      col.r = texture2D(tDiffuse, sampleUV + vec2(ca,0.0)).r;
-      col.g = texture2D(tDiffuse, sampleUV).g;
-      col.b = texture2D(tDiffuse, sampleUV - vec2(ca,0.0)).b;
-
-      // mix in glow and horizon darkness
+      vec3 col; col.r = texture2D(tDiffuse, sampleUV + vec2(ca,0.0)).r;
+      col.g = texture2D(tDiffuse, sampleUV).g; col.b = texture2D(tDiffuse, sampleUV - vec2(ca,0.0)).b;
       vec3 final = mix(col, vec3(0.0), inside*0.98) + glowColor.rgb * (1.0 - inside);
-
       gl_FragColor = vec4(final, 1.0);
     }
   `
 };
-
 const lensPass = new THREE.ShaderPass(LENS_SHADER);
 lensPass.renderToScreen = true;
 composer.addPass(lensPass);
 
-// ---------- GUI controls ----------
+// ----- Raytrace-like shader (iterative ray integration) -----
+// This is heavier but looks more 'physicsy'. Samples tDiffuse along a deflected ray.
+// MAX_STEPS is the upper bound for performance reasons.
+const RAY_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    resolution: { value: new THREE.Vector2(container.clientWidth, container.clientHeight) },
+    bhPos: { value: new THREE.Vector2(0.5, 0.5) },
+    strength: { value: 0.9 },
+    eventHorizon: { value: 0.05 },
+    steps: { value: 40 },
+    stepSize: { value: 0.012 },
+    time: { value: 0 }
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  // shader uses constant loop bound but respects uniform steps
+  fragmentShader: `
+    precision highp float;
+    uniform sampler2D tDiffuse; uniform vec2 resolution; uniform vec2 bhPos;
+    uniform float strength; uniform float eventHorizon; uniform float time;
+    uniform int steps; uniform float stepSize;
+    varying vec2 vUv;
+    #define MAX_STEPS 80
+
+    float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+
+    void main(){
+      vec2 uv = vUv;
+      // initial ray position in UV and ray direction pointing outward from camera center to pixel (normalized)
+      vec2 pos = uv;
+      // accumulate color
+      vec3 accum = vec3(0.0);
+      float w = 0.0;
+      vec2 toCenter = bhPos - pos;
+      // approximate initial impact parameter distance
+      for(int i=0;i<MAX_STEPS;i++){
+        if(i >= steps) break;
+        // compute offset from BH and deflection
+        vec2 d = pos - bhPos;
+        float dist = length(d) + 1e-6;
+        // visual deflection magnitude (scaled inverse with distance)
+        float alpha = strength / max(dist, 0.0001);
+        // radial inward
+        vec2 inward = -normalize(d) * alpha * 0.4;
+        // tangential shear to simulate spin-frame dragging (small, time-varying)
+        vec2 perp = vec2(-normalize(d).y, normalize(d).x);
+        vec2 tang = perp * (0.6 * sin(time*0.2 + dist*30.0)) * (alpha * 0.4);
+        // apply small displacement per step
+        vec2 disp = (inward + tang) * stepSize;
+        pos += disp;
+        // sample scene texture at the current pos
+        vec3 sample = texture2D(tDiffuse, pos).rgb;
+        // weight samples toward later steps to emphasize bending near BH
+        float fade = exp(-dist*6.0);
+        float weight = 0.7 * fade + 0.3 * (1.0 - float(i)/float(steps));
+        accum += sample * weight;
+        w += weight;
+        // if inside event horizon, early-darken and stop accumulating meaningful light
+        if(dist < eventHorizon * 1.0){
+          accum *= 0.12; w = max(w, 0.0001);
+          break;
+        }
+      }
+      vec3 col = accum / max(w, 0.0001);
+      // small chromatic smear for dramatics
+      float ca = 0.01 * (1.0 - float(steps)/40.0);
+      vec3 final;
+      final.r = texture2D(tDiffuse, uv + vec2(ca, 0.0)).r * 0.6 + col.r*0.4;
+      final.g = col.g;
+      final.b = texture2D(tDiffuse, uv - vec2(ca, 0.0)).b * 0.6 + col.b*0.4;
+      gl_FragColor = vec4(final, 1.0);
+    }
+  `
+};
+const rayPass = new THREE.ShaderPass(RAY_SHADER);
+rayPass.renderToScreen = true;
+
+// ----- GUI & controls -----
 const params = {
-  mass: 1.0,             // visual mass scale (affects lens strength)
-  lensStrength: 0.6,    // multiplier for shader
-  eventHorizon: 0.05,   // normalized radius in UV
-  accretionBrightness: 0.8,
+  mass: 1.0,
+  lensStrength: 0.6,
+  eventHorizon: 0.05,
   spin: 0.2,
+  raytrace: true,
+  raySteps: 40,
+  stepSize: 0.012,
   particleBurstSize: 250,
   starCount: 2500,
-  reset: () => { resetScene(); },
+  adaptivePixelRatio: true,
+  snapshot: ()=> saveSnapshot(),
+  reset: ()=> resetScene()
 };
-
 const gui = new dat.GUI();
-gui.add(params, 'mass', 0.02, 3.5, 0.01).name('Mass (visual)').onChange(v => { params.lensStrength = v * 0.6; updateGUIValues(); });
-gui.add(params, 'lensStrength', 0.0, 3.0, 0.01).name('Lensing Strength').onChange(updateGUIValues);
-gui.add(params, 'eventHorizon', 0.01, 0.12, 0.001).name('Event Horizon').onChange(updateGUIValues);
-gui.add(params, 'accretionBrightness', 0.0, 2.5, 0.01).name('Accretion Bright').onChange(updateAccretion);
-gui.add(params, 'spin', 0.0, 1.2, 0.01).name('Spin (visual)').onChange(updateGUIValues);
-gui.add(params, 'particleBurstSize', 50, 2000, 1).name('Burst Size');
-gui.add(params, 'starCount', 500, 8000, 100).name('Star Count').onChange(v => regenerateStars(v));
+gui.add(params, 'mass', 0.02, 3.5, 0.01).name('Mass (visual)').onChange(v=>{ params.lensStrength = v*0.6; updateUniforms(); });
+gui.add(params, 'lensStrength', 0.0, 3.0, 0.01).name('Lensing Strength').onChange(()=>updateUniforms());
+gui.add(params, 'eventHorizon', 0.01, 0.12, 0.001).name('Event Horizon').onChange(()=>updateUniforms());
+gui.add(params, 'spin', 0.0, 1.2, 0.01).name('Spin (visual)').onChange(()=>updateUniforms());
+gui.add(params, 'raytrace').name('Raytrace Mode').onChange((v)=> toggleRaytrace(v));
+gui.add(params, 'raySteps', 4, 80, 1).name('Ray Steps').onChange((v)=> { rayPass.uniforms['steps'].value = v; });
+gui.add(params, 'stepSize', 0.002, 0.05, 0.001).name('Step Size').onChange((v)=> { rayPass.uniforms['stepSize'].value = v; });
+gui.add(params, 'adaptivePixelRatio').name('Adaptive Pixel Ratio');
+gui.add(params, 'snapshot').name('Save Snapshot');
 gui.add(params, 'reset').name('Reset Scene');
+gui.add(params, 'starCount', 500, 8000, 100).name('Star Count').onChange(v=> regenerateStars(v));
 
-function updateGUIValues() {
+function updateUniforms(){
   lensPass.uniforms['strength'].value = params.lensStrength;
   lensPass.uniforms['eventHorizon'].value = params.eventHorizon;
   lensPass.uniforms['spin'].value = params.spin;
+  rayPass.uniforms['strength'].value = params.lensStrength * 1.2;
+  rayPass.uniforms['eventHorizon'].value = params.eventHorizon;
   horizon.scale.set(params.eventHorizon*30, params.eventHorizon*30, 1);
+  acc.material.opacity = Math.min(1.6, Math.max(0.05, params.mass * 0.8));
+}
+function toggleRaytrace(on){
+  // swap shader pass for ray or lens
+  composer.passes = [];
+  composer.addPass(renderPass);
+  if(on) composer.addPass(rayPass);
+  else composer.addPass(lensPass);
+}
+toggleRaytrace(params.raytrace);
+
+// ----- Stats (FPS) -----
+const stats = new Stats();
+stats.dom.id = 'stats';
+document.body.appendChild(stats.dom);
+
+// ----- Snapshot helper -----
+function saveSnapshot(){
+  // render one frame at native pixel ratio to ensure crisp snapshot
+  const prevPR = renderer.getPixelRatio();
+  renderer.setPixelRatio(1.0);
+  composer.render(0.016);
+  const data = renderer.domElement.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = data; a.download = 'blackhole_snapshot.png'; a.click();
+  renderer.setPixelRatio(prevPR);
 }
 
-function updateAccretion() {
-  acc.material.opacity = Math.min(1.6, Math.max(0.05, params.accretionBrightness));
-  acc.scale.set(1 + params.accretionBrightness*0.6, 1 + params.accretionBrightness*0.6, 1);
+// ----- UI Buttons -----
+document.getElementById('spawnStar').addEventListener('click', ()=> spawnOrbiting(false));
+document.getElementById('spawnPlanet').addEventListener('click', ()=> spawnOrbiting(true));
+document.getElementById('burst').addEventListener('click', ()=> burstParticles(params.particleBurstSize));
+document.getElementById('snapshot').addEventListener('click', saveSnapshot);
+document.getElementById('resetScene').addEventListener('click', resetScene);
+
+function resetScene(){
+  orbiting.forEach(o=> scene.remove(o.mesh));
+  orbiting.length = 0;
+  particleGroup.clear();
+  for(let i=0;i<6;i++) spawnOrbiting(Math.random()>0.5);
+  camera.position.set(0,8,35);
+  params.mass = 1.0; params.lensStrength = 0.6; params.eventHorizon = 0.05; params.spin = 0.2;
+  params.raytrace = true; params.raySteps = 40; params.stepSize = 0.012;
+  updateUniforms();
+  toggleRaytrace(params.raytrace);
 }
 
-function regenerateStars(n) {
-  // remove and recreate
+// ----- Star regen -----
+function regenerateStars(n){
   starGroup.clear();
   createStarField(n, 1300);
 }
 
-// ---------- UI Buttons ----------
-document.getElementById('spawnStar').addEventListener('click', ()=>spawnOrbiting(false));
-document.getElementById('spawnPlanet').addEventListener('click', ()=>spawnOrbiting(true));
-document.getElementById('burst').addEventListener('click', ()=>burstParticles(params.particleBurstSize));
-document.getElementById('resetScene').addEventListener('click', ()=>resetScene());
-
-function resetScene() {
-  // remove orbiters
-  orbiting.forEach(o => scene.remove(o.mesh));
-  orbiting.length = 0;
-  // remove particles
-  particleGroup.clear();
-  // default objects
-  for (let i=0;i<6;i++) spawnOrbiting(Math.random()>0.5);
-  camera.position.set(0,8,35); camera.lookAt(0,0,0);
-  params.mass = 1.0; params.lensStrength=0.6; params.eventHorizon=0.05; params.accretionBrightness=0.8; params.spin=0.2;
-  updateGUIValues(); updateAccretion();
-}
-
-// ---------- Resize ----------
+// ----- Resize handling -----
 window.addEventListener('resize', onWindowResize);
 function onWindowResize(){
   camera.aspect = container.clientWidth / container.clientHeight;
@@ -357,50 +383,47 @@ function onWindowResize(){
   renderer.setSize(container.clientWidth, container.clientHeight);
   composer.setSize(container.clientWidth, container.clientHeight);
   lensPass.uniforms['resolution'].value.set(container.clientWidth, container.clientHeight);
+  rayPass.uniforms['resolution'].value.set(container.clientWidth, container.clientHeight);
 }
 
-// ---------- Animation loop ----------
+// ----- Animation loop -----
 const clock = new THREE.Clock();
-
 function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(0.06, clock.getDelta());
   const t = clock.elapsedTime;
 
-  // Camera movement
+  // movement
   const speed = 40.0;
   velocity.set(0,0,0);
-  if (move.forward) velocity.z -= 1;
-  if (move.backward) velocity.z += 1;
-  if (move.left) velocity.x -= 1;
-  if (move.right) velocity.x += 1;
-  // normalize & move in camera local space
-  if (velocity.lengthSq()>0) {
+  if(move.forward) velocity.z -= 1;
+  if(move.backward) velocity.z += 1;
+  if(move.left) velocity.x -= 1;
+  if(move.right) velocity.x += 1;
+  if(velocity.lengthSq()>0){
     velocity.normalize().multiplyScalar(speed * dt);
     controls.moveRight(velocity.x);
     controls.getObject().position.y += velocity.y;
     controls.moveForward(velocity.z);
   }
 
-  // orbiting objects update (simple circular orbits)
-  for (let o of orbiting) {
+  // update orbiters
+  for(let o of orbiting){
     o.angle += o.speed * dt;
     const x = Math.cos(o.angle) * o.radius;
     const z = Math.sin(o.angle) * o.radius;
     o.mesh.position.set(x, Math.sin(t*0.1 + o.angle*0.3)*o.tilt*10, z);
-    // subtle rotation
     o.mesh.rotation.y += 0.005 + (o.isPlanet?0.02:0.005);
   }
 
-  // particle update
+  // particles
   particleGroup.children.forEach(points => {
     const posAttr = points.geometry.attributes.position;
-    for (let i=0;i<posAttr.count;i++){
+    for(let i=0;i<posAttr.count;i++){
       posAttr.array[i*3] += points.userData.vel[i].x * dt;
       posAttr.array[i*3+1] += points.userData.vel[i].y * dt;
       posAttr.array[i*3+2] += points.userData.vel[i].z * dt;
-      // simple BH gravity pull for particles
-      const px = posAttr.array[i*3], py=posAttr.array[i*3+1], pz=posAttr.array[i*3+2];
+      const px = posAttr.array[i*3], py = posAttr.array[i*3+1], pz = posAttr.array[i*3+2];
       const r2 = px*px + py*py + pz*pz + 0.0001;
       const g = Math.min(400.0 / r2, 60.0);
       const dir = new THREE.Vector3(-px, -py, -pz).multiplyScalar(g*dt);
@@ -409,54 +432,63 @@ function animate(){
     posAttr.needsUpdate = true;
   });
 
-  // accretion rotation
   acc.rotation.z += params.spin * 0.01 + 0.002;
 
-  // update lens shader with BH screen position
-  // project BH (0,0,0) to screen UV
-  const bhWorldPos = new THREE.Vector3();
-  BH.getWorldPosition(bhWorldPos);
-  const ndc = bhWorldPos.clone().project(camera);
-  const uvx = 0.5 + ndc.x*0.5;
-  const uvy = 0.5 + ndc.y*0.5;
+  // BH screen pos to shader
+  const bhWorld = new THREE.Vector3();
+  BH.getWorldPosition(bhWorld);
+  const ndc = bhWorld.clone().project(camera);
+  const uvx = 0.5 + ndc.x * 0.5;
+  const uvy = 0.5 + ndc.y * 0.5;
+
+  // Update shader uniforms
   lensPass.uniforms['bhPos'].value.set(uvx, uvy);
   lensPass.uniforms['time'].value = t;
-
-  // dynamic parameters
+  rayPass.uniforms['bhPos'].value.set(uvx, uvy);
+  rayPass.uniforms['time'].value = t;
+  rayPass.uniforms['steps'].value = params.raySteps;
+  rayPass.uniforms['stepSize'].value = params.stepSize;
+  rayPass.uniforms['strength'].value = params.lensStrength * 1.2;
   lensPass.uniforms['strength'].value = params.lensStrength;
   lensPass.uniforms['eventHorizon'].value = params.eventHorizon;
-  lensPass.uniforms['spin'].value = params.spin;
+  rayPass.uniforms['eventHorizon'].value = params.eventHorizon;
 
-  // render
-  composer.render(dt);
-}
-updateGUIValues(); updateAccretion();
-animate();
-
-// ---------- Initial camera light and small helpers ----------
-const ambient = new THREE.AmbientLight(0x222222, 0.6);
-scene.add(ambient);
-
-// ---------- Helpful keyboard UI hints ----------
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'h') {
-    alert('Controls:\n- Click to lock pointer (mouse look)\n- WASD to move\n- Use GUI to tweak mass, lensing, event horizon, spin\n- Spawn stars/planets and particle bursts with buttons\n- Press Reset Scene to return to defaults');
-  }
-});
-
-// ---------- tiny performance fallback ----------
-let lastFrame = performance.now();
-setInterval(()=> {
-  const now = performance.now();
-  const fps = 1000 / Math.max(1, (now - lastFrame));
-  lastFrame = now;
-  if (fps < 20) {
-    renderer.setPixelRatio(0.75); // degrade
+  // Adaptive pixel ratio/perf guard
+  if(params.adaptivePixelRatio && params.raytrace){
+    // simplify when heavy: lower PR if fps low
+    // we use stats.dom to estimate but keep it simple: measure dt -> target ~60fps
+    const fps = 1.0 / Math.max(1e-6, dt);
+    if(fps < 30) renderer.setPixelRatio(0.7);
+    else renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   } else {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   }
-}, 2000);
 
+  // render via composer
+  composer.render(dt);
+
+  stats.update();
+}
+updateUniforms();
+animate();
+
+// ----- Initial composer choice: ray or lens -----
+// ensure composer pass ordering respects raytrace toggle
+composer.passes = []; composer.addPass(renderPass);
+if(params.raytrace) composer.addPass(rayPass); else composer.addPass(lensPass);
+
+// ----- helpful keys -----
+window.addEventListener('keydown', (e)=>{
+  if(e.key === 'h') alert('Controls:\\n- Click to lock pointer (mouse look)\\n- WASD to move\\n- GUI: toggle Raytrace Mode, adjust Ray Steps for quality\\n- Snapshot to save PNG');
+});
+
+// ----- Perf watchdog: degrade if FPS drops dramatically -----
+let perfTimer = performance.now();
+setInterval(()=>{
+  // no heavy synchronous checks here, keep lean
+  // auto-disable raytrace if device can't handle it? (opt-in)
+  // For now we leave control with user; we keep pixel ratio lowering above.
+}, 2000);
 </script>
 </body>
 </html>
