@@ -3,373 +3,786 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Black Hole Simulation</title>
+    <title>Emulation Helper Bot - Ultimate Discord Manager</title>
+    <link rel="icon" type="image/png" href="https://wallpapers.com/images/hd/discord-logo-6ou1mvwsuho6umqh.jpg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/particles.js/2.0.0/particles.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.2/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
-        #gui { position: absolute; top: 10px; right: 10px; }
-        #equation { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial; font-size: 16px; background: rgba(0, 0, 0, 0.7); padding: 10px; }
-        #hud { position: absolute; bottom: 10px; left: 10px; color: white; font-family: Arial; font-size: 14px; background: rgba(0, 0, 0, 0.5); padding: 5px; }
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+        }
+        .pulse-glow {
+            animation: pulseGlow 1.5s infinite;
+        }
+        .gradient-text {
+            background: linear-gradient(90deg, #00FF88, #00CC70);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #2F3136;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #00FF88;
+            border-radius: 4px;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #2F3136;
+            padding: 2rem;
+            border-radius: 1rem;
+            max-width: 80%;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+        .neon-border {
+            border: 2px solid #00FF88;
+            box-shadow: 0 0 10px #00FF88;
+        }
+        .carousel-dot {
+            width: 12px;
+            height: 12px;
+            background: #2F3136;
+            border-radius: 50%;
+            margin: 0 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .carousel-dot.active {
+            background: #00FF88;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        [data-tooltip] {
+            position: relative;
+            cursor: pointer;
+        }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-10px);
+            background: #2F3136;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 10;
+        }
+        [data-tooltip]::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-2px);
+            border: 6px solid transparent;
+            border-top-color: #2F3136;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+        [data-tooltip]:hover::after,
+        [data-tooltip]:hover::before {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(-8px);
+        }
+        .error-message {
+            color: #ff4d4d;
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+        }
     </style>
 </head>
 <body>
-    <div id="equation">Schwarzschild Metric: ds² = -(1 - 2GM/c²r)c²dt² + (1 - 2GM/c²r)⁻¹dr² + r²(dθ² + sin²θ dφ²)</div>
-    <div id="gui"></div>
-    <div id="hud">Hawking Temp: Initializing...</div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r169/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169/examples/jsm/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169/examples/jsm/geometries/TextGeometry.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169/examples/jsm/loaders/FontLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169/examples/jsm/postprocessing/EffectComposer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169/examples/jsm/postprocessing/RenderPass.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.169/examples/jsm/postprocessing/UnrealBloomPass.js"></script>
-    <script src="https://unpkg.com/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
-    <script>
-        // Scene setup
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x333333);
-        document.body.appendChild(renderer.domElement);
+    <div id="root"></div>
+    <div id="error-root" class="error-message hidden">Failed to load the application. Please check your internet connection or try again later.</div>
+    <button id="back-to-top" class="fixed bottom-6 right-6 bg-green-400 text-black p-4 rounded-full shadow-lg hover:bg-green-500 transition-transform duration-300 hidden pulse-glow">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+    <script type="text/babel" defer>
+        try {
+            const { useState, useEffect } = React;
 
-        // Orbit controls
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
+            const commandsData = [
+                {
+                    category: 'Moderation',
+                    commands: [
+                        { name: '/ban', desc: 'Bans a user from the server', details: 'Usage: /ban @user [reason]. Requires ban permissions.' },
+                        { name: '/kick', desc: 'Kicks a user from the server', details: 'Usage: /kick @user [reason]. Temporarily removes the user.' },
+                        { name: '/mute', desc: 'Mutes a user for a specified duration', details: 'Usage: /mute @user [duration] [reason]. Prevents messaging.' },
+                        { name: '/unmute', desc: 'Unmutes a user', details: 'Usage: /unmute @user. Restores messaging ability.' },
+                        { name: '/clear', desc: 'Clears a specified number of messages', details: 'Usage: /clear [amount]. Bulk deletes messages.' },
+                        { name: '/warn', desc: 'Warns a user', details: 'Usage: /warn @user [reason]. Logs a warning.' },
+                        { name: '/lock', desc: 'Locks a channel, preventing messages', details: 'Usage: /lock [channel]. Restricts sending messages.' },
+                        { name: '/unlock', desc: 'Unlocks a channel, allowing messages', details: 'Usage: /unlock [channel]. Removes restrictions.' },
+                        { name: '/slowmode', desc: 'Sets slowmode for a channel', details: 'Usage: /slowmode [duration]. Limits message rate.' },
+                        { name: '/role', desc: 'Assigns or removes a role from a user', details: 'Usage: /role @user @role [add/remove]. Manages roles.' },
+                    ],
+                },
+                {
+                    category: 'Utility',
+                    commands: [
+                        { name: '/ping', desc: 'Replies with Pong! and latency', details: 'Checks bot responsiveness and latency.' },
+                        { name: '/serverinfo', desc: 'Displays server information', details: 'Shows server stats like member count, channels.' },
+                        { name: '/userinfo', desc: 'Displays user information', details: 'Details about a user: join date, roles, etc.' },
+                        { name: '/avatar', desc: 'Displays a user’s avatar', details: 'Shows enlarged user profile picture.' },
+                        { name: '/whois', desc: 'Looks up a user by ID', details: 'Fetches user info via ID.' },
+                        { name: '/uptime', desc: 'Shows the bot’s uptime', details: 'How long the bot has been running.' },
+                    ],
+                },
+                {
+                    category: 'Fun',
+                    commands: [
+                        { name: '/roll', desc: 'Rolls a dice', details: 'Random number between 1 and specified sides.' },
+                        { name: '/coinflip', desc: 'Flips a coin', details: 'Heads or tails randomness.' },
+                        { name: '/poll', desc: 'Creates a poll', details: 'Sets up a vote with options.' },
+                        { name: '/say', desc: 'Makes the bot say a message', details: 'Bot repeats your text.' },
+                        { name: '/meme', desc: 'Shares a random meme', details: 'Fetches a fun meme image.' },
+                        { name: '/rps', desc: 'Play rock-paper-scissors', details: 'Game against the bot.' },
+                        { name: '/8ball', desc: 'Ask the magic 8-ball a question', details: 'Fortune-telling responses.' },
+                        { name: '/joke', desc: 'Tells a random joke', details: 'Dad jokes or puns.' },
+                    ],
+                },
+                {
+                    category: 'Information',
+                    commands: [
+                        { name: '/help', desc: 'Lists all available commands by category', details: 'Command overview.' },
+                        { name: '/botinfo', desc: 'Displays bot information', details: 'Bot version, developer, etc.' },
+                        { name: '/channelinfo', desc: 'Displays channel information', details: 'Channel stats and permissions.' },
+                        { name: '/roleinfo', desc: 'Displays role information', details: 'Role details and members.' },
+                        { name: '/invite', desc: 'Generates an invite link for the bot', details: 'Easy bot addition link.' },
+                        { name: '/stats', desc: 'Shows server statistics', details: 'Activity and growth stats.' },
+                    ],
+                },
+                {
+                    category: 'Economy',
+                    commands: [
+                        { name: '/balance', desc: 'Check your or another user’s balance', details: 'View coin balance.' },
+                        { name: '/give', desc: 'Give coins to another user', details: 'Transfer economy coins.' },
+                        { name: '/shop', desc: 'View available items in the shop', details: 'Browse buyable items.' },
+                        { name: '/buy', desc: 'Buy an item from the shop', details: 'Purchase with coins.' },
+                        { name: '/leaderboard', desc: 'Shows the top coin holders', details: 'Economy rankings.' },
+                    ],
+                },
+                {
+                    category: 'Events',
+                    commands: [
+                        { name: '/eventcreate', desc: 'Creates a server event', details: 'Set up events with details.' },
+                        { name: '/eventlist', desc: 'Lists upcoming server events', details: 'View scheduled events.' },
+                        { name: '/eventjoin', desc: 'Join a server event', details: 'RSVP to events.' },
+                        { name: '/eventleave', desc: 'Leave a server event', details: 'Cancel RSVP.' },
+                    ],
+                },
+            ];
 
-        // Post-processing
-        const composer = new THREE.EffectComposer(renderer);
-        const renderPass = new THREE.RenderPass(scene, camera);
-        composer.addPass(renderPass);
-        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.8, 0.4, 0.85);
-        composer.addPass(bloomPass);
+            const faqData = [
+                {
+                    question: 'How do I get the bot in my server?',
+                    answer: 'Click the "Invite Now" button, select your server, and authorize the bot. It’s ready to use instantly!',
+                },
+                {
+                    question: 'Is this bot useful?',
+                    answer: 'Yes! It offers over 40 commands for moderation, fun, economy, and events, making server management and engagement a breeze.',
+                },
+                {
+                    question: 'What permissions does the bot need?',
+                    answer: 'The bot requires permissions like Manage Channels, Manage Roles, and Send Messages, which are prompted during the invite process.',
+                },
+                {
+                    question: 'Is the bot free to use?',
+                    answer: 'Completely free! Invite and use all features without any cost.',
+                },
+                {
+                    question: 'How do I use the commands?',
+                    answer: 'Type a slash (/) in your Discord server, and a list of commands will appear. Select one and follow the prompts!',
+                },
+                {
+                    question: 'How can I get support?',
+                    answer: 'Use the contact form below or join our Discord support server for help.',
+                },
+            ];
 
-        // Starfield cubemap
-        const cubeLoader = new THREE.CubeTextureLoader();
-        const bgTexture = cubeLoader.load([
-            'https://threejs.org/examples/textures/cube/MilkyWay/px.jpg',
-            'https://threejs.org/examples/textures/cube/MilkyWay/nx.jpg',
-            'https://threejs.org/examples/textures/cube/MilkyWay/py.jpg',
-            'https://threejs.org/examples/textures/cube/MilkyWay/ny.jpg',
-            'https://threejs.org/examples/textures/cube/MilkyWay/pz.jpg',
-            'https://threejs.org/examples/textures/cube/MilkyWay/nz.jpg'
-        ], () => console.log('Cubemap loaded'), undefined, (err) => {
-            console.error('Cubemap error:', err);
-            scene.background = new THREE.Color(0x000022);
-        });
-        scene.background = bgTexture;
+            const testimonials = [
+                { name: 'Alex G.', text: 'This bot transformed our server! The moderation tools are a lifesaver.', role: 'Server Admin' },
+                { name: 'Sarah M.', text: 'The fun commands keep our community engaged and laughing!', role: 'Community Manager' },
+                { name: 'Mike T.', text: 'Event management is so easy now. Highly recommend!', role: 'Event Organizer' },
+            ];
 
-        // Parameters
-        let params = {
-            rs: 2.0,
-            rotationSpeed: 0.005,
-            diskGlow: 1.0,
-            particleCount: 200,
-            lensingStrength: 0.5,
-            autoTour: false,
-            lowPoly: false,
-            exportGIF: function() { startCapture(); }
-        };
+            const ErrorBoundary = ({ children }) => {
+                const [hasError, setHasError] = useState(false);
 
-        // GUI
-        const gui = new dat.GUI({ autoPlace: false });
-        document.getElementById('gui').appendChild(gui.domElement);
-        gui.add(params, 'rs', 1, 5).name('Black Hole Radius').onChange(updateScene);
-        gui.add(params, 'rotationSpeed', 0, 0.02).name('Rotation Speed');
-        gui.add(params, 'diskGlow', 0, 2).name('Disk Glow');
-        gui.add(params, 'particleCount', 50, 500).step(10).name('Hawking Particles').onChange(updateParticles);
-        gui.add(params, 'lensingStrength', 0, 1).name('Lensing Strength');
-        gui.add(params, 'autoTour').name('Auto Tour Mode');
-        gui.add(params, 'lowPoly').name('Low Poly Mode').onChange(updateScene);
-        gui.add(params, 'exportGIF').name('Export GIF');
+                useEffect(() => {
+                    const errorHandler = (error) => {
+                        setHasError(true);
+                        console.error('ErrorBoundary caught:', error);
+                        document.getElementById('error-root').classList.remove('hidden');
+                    };
+                    window.addEventListener('error', errorHandler);
+                    return () => window.removeEventListener('error', errorHandler);
+                }, []);
 
-        // Physical constants for Hawking temp (arbitrary units for simplicity)
-        const hbar = 1.0545718e-34;
-        const c = 3e8;
-        const G = 6.67430e-11;
-        const kB = 1.380649e-23;
-        function calcHawkingTemp(rs) {
-            const M = (rs * c * c) / (2 * G); // Mass from Schwarzschild radius
-            return (hbar * c * c * c) / (8 * Math.PI * G * M * kB);
+                return hasError ? null : children;
+            };
+
+            const NavBar = () => {
+                const [isDarkMode, setIsDarkMode] = useState(true);
+                const [isScrolled, setIsScrolled] = useState(false);
+
+                useEffect(() => {
+                    const handleScroll = () => {
+                        setIsScrolled(window.scrollY > 50);
+                    };
+                    window.addEventListener('scroll', handleScroll);
+                    return () => window.removeEventListener('scroll', handleScroll);
+                }, []);
+
+                const toggleTheme = () => {
+                    setIsDarkMode(!isDarkMode);
+                    document.body.classList.toggle('bg-gray-100', !isDarkMode);
+                    document.body.classList.toggle('bg-gray-900', isDarkMode);
+                    document.body.classList.toggle('text-gray-900', !isDarkMode);
+                    document.body.classList.toggle('text-gray-200', isDarkMode);
+                };
+
+                return (
+                    <nav className={`fixed top-0 w-full backdrop-blur-lg p-4 z-50 flex justify-between items-center shadow-lg transition-all duration-300 ${isScrolled ? 'bg-gray-900/95' : 'bg-transparent'}`}>
+                        <div className="text-3xl font-bold gradient-text"><i className="fab fa-discord mr-2"></i>Emulation Helper Bot</div>
+                        <ul className="flex gap-8 items-center">
+                            <li><a href="#home" className="hover:gradient-text transition font-semibold">Home</a></li>
+                            <li><a href="#overview" className="hover:gradient-text transition font-semibold">Overview</a></li>
+                            <li><a href="#commands" className="hover:gradient-text transition font-semibold">Commands</a></li>
+                            <li><a href="#testimonials" className="hover:gradient-text transition font-semibold">Testimonials</a></li>
+                            <li><a href="#faq" className="hover:gradient-text transition font-semibold">FAQ</a></li>
+                            <li><a href="#contact" className="hover:gradient-text transition font-semibold">Contact</a></li>
+                            <li>
+                                <a href="https://discord.com/oauth2/authorize?client_id=1405225443891740683" className="bg-gradient-to-r from-green-400 to-green-600 text-black px-6 py-3 rounded-full font-bold hover:scale-105 hover:shadow-lg transition pulse-glow">
+                                    <i className="fas fa-plus mr-2"></i>Invite Bot
+                                </a>
+                            </li>
+                            <li>
+                                <button onClick={toggleTheme} className="hover:gradient-text transition text-xl">
+                                    {isDarkMode ? <i className="fas fa-sun"></i> : <i className="fas fa-moon"></i>}
+                                </button>
+                            </li>
+                        </ul>
+                    </nav>
+                );
+            };
+
+            const Header = () => (
+                <header id="home" className="relative h-screen flex flex-col justify-center items-center text-center bg-cover bg-center bg-fixed overflow-hidden" style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1511497580566-9c03da7b68b6)' }}>
+                    <div id="particles-js" className="absolute inset-0 z-0"></div>
+                    <div className="relative z-10 max-w-5xl px-4">
+                        <h1 className="text-5xl md:text-7xl font-extrabold gradient-text mb-6 drop-shadow-2xl animate-[fadeInDown_1.2s_ease-out]">Emulation Helper Bot</h1>
+                        <p className="text-xl md:text-3xl mb-10 drop-shadow-lg animate-[fadeInUp_1.2s_ease-out_0.3s] animate-fill-both">Supercharge your Discord server with 40+ commands for seamless moderation, fun, and community engagement.</p>
+                        <a href="https://discord.com/oauth2/authorize?client_id=1405225443891740683" className="bg-gradient-to-r from-green-400 to-green-600 text-black px-10 py-4 rounded-full font-bold text-xl hover:scale-110 hover:shadow-2xl transition pulse-glow">
+                            <i className="fas fa-rocket mr-2"></i>Invite Now
+                        </a>
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/70 to-green-400/30 z-0"></div>
+                </header>
+            );
+
+            const Overview = () => (
+                <section id="overview" className="py-24 bg-gray-800">
+                    <h2 className="text-center text-5xl font-extrabold gradient-text mb-16">Why Choose Emulation Helper Bot?</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 max-w-7xl mx-auto px-6">
+                        {[
+                            { title: '40+ Slash Commands', desc: 'Comprehensive tools for server management, from bans to polls.', icon: 'fas fa-tools' },
+                            { title: 'Community Engagement', desc: 'Games, economy, and events to keep members active.', icon: 'fas fa-users' },
+                            { title: 'Secure & Reliable', desc: 'Built with Discord.js for robust performance.', icon: 'fas fa-shield-alt' },
+                            { title: 'Event Management', desc: 'Create and manage server events with ease.', icon: 'fas fa-calendar-alt' },
+                            { title: 'Fun-Filled', desc: 'Memes, jokes, and games for endless entertainment.', icon: 'fas fa-laugh' },
+                            { title: 'Instant Setup', desc: 'Invite and start using in seconds.', icon: 'fas fa-bolt' },
+                        ].map((item, index) => (
+                            <div key={index} className="bg-gray-700 p-8 rounded-2xl shadow-xl hover:-translate-y-3 hover:shadow-green-400/30 transition-all duration-300 neon-border" data-tooltip={item.desc}>
+                                <div className="text-5xl mb-4 gradient-text">{item.icon && <i className={item.icon}></i>}</div>
+                                <strong className="text-2xl gradient-text">{item.title}</strong>
+                                <p className="mt-2 text-gray-300">{item.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            );
+
+            const CommandModal = ({ command, onClose }) => (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal-content custom-scrollbar" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-3xl gradient-text mb-4">{command.name}</h3>
+                        <p className="text-xl mb-2">{command.desc}</p>
+                        <p className="text-gray-300">{command.details}</p>
+                        <button onClick={onClose} className="mt-6 bg-green-600 text-black px-6 py-3 rounded-lg font-bold hover:bg-green-500 transition">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const Commands = () => {
+                const [searchTerm, setSearchTerm] = useState('');
+                const [selectedCommand, setSelectedCommand] = useState(null);
+                const [suggestions, setSuggestions] = useState([]);
+
+                const debounce = (func, delay) => {
+                    let timeoutId;
+                    return (...args) => {
+                        clearTimeout(timeoutId);
+                        timeoutId = setTimeout(() => func(...args), delay);
+                    };
+                };
+
+                const handleSearch = debounce((value) => {
+                    setSearchTerm(value);
+                    if (value) {
+                        const allCommands = commandsData.flatMap(cat => cat.commands);
+                        const filtered = allCommands.filter(cmd => 
+                            cmd.name.toLowerCase().includes(value.toLowerCase()) || 
+                            cmd.desc.toLowerCase().includes(value.toLowerCase())
+                        ).slice(0, 5);
+                        setSuggestions(filtered);
+                    } else {
+                        setSuggestions([]);
+                    }
+                }, 300);
+
+                return (
+                    <section id="commands" className="py-24 bg-cover bg-center bg-fixed relative" style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1546484396-fb3fc3a8d29e)' }}>
+                        <div className="absolute inset-0 bg-gray-900/70"></div>
+                        <div className="relative z-10">
+                            <h2 className="text-center text-5xl font-extrabold gradient-text mb-16">Explore Our Commands</h2>
+                            <div className="text-center mb-12 px-4 relative">
+                                <input
+                                    type="text"
+                                    placeholder="Search commands (e.g., /ban, /poll)..."
+                                    className="w-full max-w-3xl p-5 rounded-xl bg-gray-700/70 text-gray-200 focus:bg-gray-700/90 focus:outline-none transition-all shadow-inner neon-border"
+                                    onChange={(e) => handleSearch(e.target.value)}
+                                />
+                                {suggestions.length > 0 && (
+                                    <ul className="absolute w-full max-w-3xl bg-gray-700 rounded-xl mt-2 shadow-lg z-20">
+                                        {suggestions.map((cmd, index) => (
+                                            <li 
+                                                key={index} 
+                                                className="p-4 hover:bg-green-400/30 cursor-pointer"
+                                                onClick={() => setSelectedCommand(cmd)}
+                                            >
+                                                <strong>{cmd.name}</strong>: {cmd.desc}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 max-w-7xl mx-auto px-6">
+                                {commandsData.map((category, catIndex) => {
+                                    const visibleCommands = category.commands.filter(cmd => 
+                                        cmd.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                        cmd.desc.toLowerCase().includes(searchTerm.toLowerCase())
+                                    );
+                                    if (visibleCommands.length === 0 && searchTerm) return null;
+                                    return (
+                                        <div key={catIndex} className="bg-gray-700/80 p-8 rounded-2xl shadow-xl hover:-translate-y-3 transition-all duration-300 custom-scrollbar max-h-96 overflow-y-auto neon-border">
+                                            <h3 className="text-3xl gradient-text mb-6">{category.category}</h3>
+                                            <ul className="space-y-4">
+                                                {visibleCommands.map((cmd, cmdIndex) => (
+                                                    <li 
+                                                        key={cmdIndex} 
+                                                        className="p-4 bg-gray-600/40 rounded-lg hover:bg-green-400/30 hover:translate-x-2 transition cursor-pointer" 
+                                                        onClick={() => setSelectedCommand(cmd)}
+                                                        data-tooltip={cmd.details}
+                                                    >
+                                                        <strong>{cmd.name}</strong>: {cmd.desc}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        {selectedCommand && <CommandModal command={selectedCommand} onClose={() => setSelectedCommand(null)} />}
+                    </section>
+                );
+            };
+
+            const Testimonials = () => {
+                const [current, setCurrent] = useState(0);
+
+                useEffect(() => {
+                    const interval = setInterval(() => {
+                        setCurrent((prev) => (prev + 1) % testimonials.length);
+                    }, 5000);
+                    return () => clearInterval(interval);
+                }, []);
+
+                return (
+                    <section id="testimonials" className="py-24 bg-gray-800">
+                        <h2 className="text-center text-5xl font-extrabold gradient-text mb-16">What Our Users Say</h2>
+                        <div className="max-w-4xl mx-auto px-6">
+                            <div className="relative overflow-hidden">
+                                {testimonials.map((testimonial, index) => (
+                                    <div 
+                                        key={index} 
+                                        className={`absolute w-full transition-all duration-500 ${index === current ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full'}`}
+                                        style={{ animation: index === current ? 'slideIn 0.5s' : '' }}
+                                    >
+                                        <div className="bg-gray-700 p-8 rounded-2xl shadow-xl text-center neon-border">
+                                            <p className="text-xl italic mb-4">"{testimonial.text}"</p>
+                                            <p className="text-lg gradient-text font-bold">{testimonial.name}</p>
+                                            <p className="text-gray-400">{testimonial.role}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex justify-center mt-6">
+                                {testimonials.map((_, index) => (
+                                    <div 
+                                        key={index} 
+                                        className={`carousel-dot ${index === current ? 'active' : ''}`} 
+                                        onClick={() => setCurrent(index)}
+                                    ></div>
+                                ))}
+                            </div>
+                        </div>
+                    </section>
+                );
+            };
+
+            const Invite = () => (
+                <section id="invite" className="py-24 bg-gray-800 text-center">
+                    <h2 className="text-5xl font-extrabold gradient-text mb-8">Ready to Supercharge Your Server?</h2>
+                    <p className="text-2xl mb-12 max-w-3xl mx-auto">Invite Emulation Helper Bot and unlock powerful features for your Discord community!</p>
+                    <a href="https://discord.com/oauth2/authorize?client_id=1405225443891740683" className="bg-gradient-to-r from-green-400 to-green-600 text-black px-10 py-5 rounded-full font-bold text-xl hover:scale-110 hover:shadow-2xl transition pulse-glow">
+                        <i className="fas fa-plus mr-2"></i>Invite Now
+                    </a>
+                </section>
+            );
+
+            const FAQ = () => (
+                <section id="faq" className="py-24 bg-cover bg-center bg-fixed relative" style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1516321310762-479e93c67ae5)' }}>
+                    <div className="absolute inset-0 bg-gray-900/70"></div>
+                    <div className="relative z-10">
+                        <h2 className="text-center text-5xl font-extrabold gradient-text mb-16">Frequently Asked Questions</h2>
+                        <div className="max-w-5xl mx-auto px-6 space-y-6">
+                            {faqData.map((item, index) => (
+                                <FAQItem key={index} question={item.question} answer={item.answer} />
+                            ))}
+                        </div>
+                    </div>
+                </section>
+            );
+
+            const FAQItem = ({ question, answer }) => {
+                const [isOpen, setIsOpen] = useState(false);
+
+                return (
+                    <div className="bg-gray-700/80 p-6 rounded-2xl shadow-xl cursor-pointer hover:bg-gray-700/90 hover:-translate-y-2 transition-all neon-border" onClick={() => setIsOpen(!isOpen)}>
+                        <h4 className="text-2xl gradient-text"><i className="fas fa-question-circle mr-2"></i>{question}</h4>
+                        <div className={`mt-4 text-lg text-gray-300 overflow-hidden transition-max-height duration-500 ${isOpen ? 'max-h-96' : 'max-h-0'}`}>
+                            {answer}
+                        </div>
+                    </div>
+                );
+            };
+
+            const Newsletter = () => {
+                const [email, setEmail] = useState('');
+                const [status, setStatus] = useState('');
+
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    setStatus('Subscribing...');
+                    try {
+                        const response = await fetch('https://formspree.io/f/mzzvwply', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, type: 'newsletter' }),
+                        });
+                        if (response.ok) {
+                            setStatus('Subscribed successfully!');
+                            setEmail('');
+                        } else {
+                            setStatus('Failed to subscribe.');
+                        }
+                    } catch (error) {
+                        setStatus('An error occurred.');
+                    }
+                };
+
+                return (
+                    <section id="newsletter" className="py-24 bg-gray-900 text-center">
+                        <h2 className="text-5xl font-extrabold gradient-text mb-8">Stay Updated</h2>
+                        <p className="text-xl mb-10 max-w-2xl mx-auto">Join our newsletter for the latest bot updates and Discord tips!</p>
+                        <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
+                            <div className="flex gap-4">
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="Enter your email"
+                                    required
+                                    className="flex-grow p-4 rounded-lg bg-gray-700/70 text-gray-200 focus:bg-gray-700/90 focus:outline-none transition shadow-inner"
+                                />
+                                <button type="submit" className="bg-gradient-to-r from-green-400 to-green-600 text-black px-6 py-4 rounded-lg font-bold hover:scale-105 hover:shadow-lg transition pulse-glow">
+                                    Subscribe
+                                </button>
+                            </div>
+                            {status && <p className="mt-4 text-lg gradient-text">{status}</p>}
+                        </form>
+                    </section>
+                );
+            };
+
+            const Contact = () => {
+                const [formData, setFormData] = useState({ email: '', message: '' });
+                const [status, setStatus] = useState('');
+                const [isSubmitting, setIsSubmitting] = useState(false);
+
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    setIsSubmitting(true);
+                    try {
+                        const response = await fetch('https://formspree.io/f/mzzvwply', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(formData),
+                        });
+                        if (response.ok) {
+                            setStatus('Message sent successfully!');
+                            setFormData({ email: '', message: '' });
+                        } else {
+                            setStatus('Failed to send message.');
+                        }
+                    } catch (error) {
+                        setStatus('An error occurred.');
+                    } finally {
+                        setIsSubmitting(false);
+                    }
+                };
+
+                const handleChange = (e) => {
+                    setFormData({ ...formData, [e.target.name]: e.target.value });
+                };
+
+                return (
+                    <section id="contact" className="py-24 bg-gray-800">
+                        <h2 className="text-center text-5xl font-extrabold gradient-text mb-16">Get in Touch</h2>
+                        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto bg-gray-700 p-10 rounded-2xl shadow-xl neon-border">
+                            <div className="mb-6">
+                                <label className="block text-lg mb-2"><i className="fas fa-envelope mr-2"></i>Your Email:</label>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    required
+                                    className="w-full p-4 rounded-lg bg-gray-600/50 text-gray-200 focus:bg-gray-600/80 focus:outline-none transition shadow-inner"
+                                />
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-lg mb-2"><i className="fas fa-comment mr-2"></i>Your Message:</label>
+                                <textarea
+                                    name="message"
+                                    value={formData.message}
+                                    onChange={handleChange}
+                                    required
+                                    className="w-full p-4 rounded-lg bg-gray-600/50 text-gray-200 focus:bg-gray-600/80 focus:outline-none transition shadow-inner"
+                                    rows="6"
+                                ></textarea>
+                            </div>
+                            <button 
+                                type="submit" 
+                                disabled={isSubmitting}
+                                className={`bg-gradient-to-r from-green-400 to-green-600 text-black px-8 py-4 rounded-lg font-bold text-lg hover:scale-105 hover:shadow-lg transition ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'pulse-glow'}`}
+                            >
+                                <i className="fas fa-paper-plane mr-2"></i>{isSubmitting ? 'Sending...' : 'Send Message'}
+                            </button>
+                            {status && <p className="mt-6 text-center text-lg gradient-text">{status}</p>}
+                        </form>
+                    </section>
+                );
+            };
+
+            const Footer = () => (
+                <footer className="py-12 bg-gray-900 text-center">
+                    <p className="text-lg">
+                        &copy; 2025 Emulation Helper Bot. All rights reserved.{' '}
+                        <a href="privacy.html" className="gradient-text hover:underline">Privacy Policy</a> |{' '}
+                        <a href="terms.html" className="gradient-text hover:underline">Terms of Service</a> |{' '}
+                        <a href="https://discord.gg/support" className="gradient-text hover:underline">Support Server</a>
+                    </p>
+                </footer>
+            );
+
+            const App = () => {
+                useEffect(() => {
+                    if (!window.gsap) {
+                        console.warn('GSAP not loaded, animations may not work.');
+                    } else {
+                        try {
+                            gsap.registerPlugin(ScrollTrigger);
+                            gsap.from('nav', { y: -100, duration: 1.2, ease: 'bounce.out' });
+                            gsap.from('#overview .neon-border', {
+                                opacity: 0,
+                                y: 60,
+                                stagger: 0.2,
+                                duration: 1.2,
+                                ease: 'power3.out',
+                                delay: 0.5,
+                            });
+                            gsap.from('#commands .neon-border', {
+                                opacity: 0,
+                                y: 50,
+                                stagger: 0.2,
+                                duration: 1,
+                                scrollTrigger: { trigger: '#commands', start: 'top 80%' },
+                            });
+                            gsap.from('#testimonials .neon-border', {
+                                opacity: 0,
+                                scale: 0.8,
+                                duration: 1,
+                                scrollTrigger: { trigger: '#testimonials', start: 'top 80%' },
+                            });
+                            gsap.from('#faq .neon-border', {
+                                opacity: 0,
+                                x: -50,
+                                stagger: 0.2,
+                                duration: 1,
+                                scrollTrigger: { trigger: '#faq', start: 'top 80%' },
+                            });
+                        } catch (e) {
+                            console.error('GSAP animation error:', e);
+                        }
+                    }
+
+                    if (!window.particlesJS) {
+                        console.warn('Particles.js not loaded, particle effects may not work.');
+                    } else {
+                        try {
+                            particlesJS('particles-js', {
+                                particles: {
+                                    number: { value: 150, density: { enable: true, value_area: 800 } },
+                                    color: { value: '#00FF88' },
+                                    shape: { type: 'circle', stroke: { width: 0 } },
+                                    opacity: { value: 0.8, random: true },
+                                    size: { value: 3, random: true },
+                                    line_linked: {
+                                        enable: true,
+                                        distance: 100,
+                                        color: '#00FF88',
+                                        opacity: 0.7,
+                                        width: 1.5,
+                                    },
+                                    move: {
+                                        enable: true,
+                                        speed: 5,
+                                        direction: 'none',
+                                        random: true,
+                                        straight: false,
+                                        out_mode: 'out',
+                                    },
+                                },
+                                interactivity: {
+                                    detect_on: 'canvas',
+                                    events: {
+                                        onhover: { enable: true, mode: 'grab' },
+                                        onclick: { enable: true, mode: 'push' },
+                                        resize: true,
+                                    },
+                                    modes: {
+                                        grab: { distance: 200, line_linked: { opacity: 1 } },
+                                        push: { particles_nb: 5 },
+                                    },
+                                },
+                                retina_detect: true,
+                            });
+                        } catch (e) {
+                            console.error('Particles.js error:', e);
+                        }
+                    }
+
+                    try {
+                        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                            anchor.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                const target = document.querySelector(anchor.getAttribute('href'));
+                                if (target) {
+                                    window.scrollTo({
+                                        top: target.offsetTop - 80,
+                                        behavior: 'smooth',
+                                    });
+                                }
+                            });
+                        });
+
+                        const backToTop = document.getElementById('back-to-top');
+                        window.addEventListener('scroll', () => {
+                            if (window.scrollY > 300) {
+                                backToTop.classList.remove('hidden');
+                            } else {
+                                backToTop.classList.add('hidden');
+                            }
+                        });
+                        backToTop.addEventListener('click', () => {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        });
+                    } catch (e) {
+                        console.error('DOM event error:', e);
+                    }
+                }, []);
+
+                return (
+                    <ErrorBoundary>
+                        <div className="bg-gray-900 text-gray-200 font-sans">
+                            <NavBar />
+                            <Header />
+                            <Overview />
+                            <Commands />
+                            <Testimonials />
+                            <Invite />
+                            <FAQ />
+                            <Newsletter />
+                            <Contact />
+                            <Footer />
+                        </div>
+                    </ErrorBoundary>
+                );
+            };
+
+            ReactDOM.render(<App />, document.getElementById('root'));
+        } catch (error) {
+            console.error('Application failed to initialize:', error);
+            document.getElementById('error-root').classList.remove('hidden');
         }
-
-        // Event horizon
-        const horizonGeometry = new THREE.SphereGeometry(params.rs, 64, 64);
-        const horizonMaterial = new THREE.ShaderMaterial({
-            uniforms: { time: { value: 0 } },
-            vertexShader: `varying vec3 vNormal; void main() { vNormal = normal; vec3 pos = position + normal * sin(time + position.x * 10.0) * 0.05; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`,
-            fragmentShader: `uniform float time; varying vec3 vNormal; void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); }`
-        });
-        const horizon = new THREE.Mesh(horizonGeometry, horizonMaterial);
-        scene.add(horizon);
-
-        // Gravity grid
-        let gridMesh;
-        function updateGrid() {
-            if (gridMesh) scene.remove(gridMesh);
-            const rSteps = params.lowPoly ? 20 : 40;
-            const phiSteps = params.lowPoly ? 20 : 40;
-            const geometry = new THREE.BufferGeometry();
-            const vertices = [];
-            const colors = [];
-            const indices = [];
-            const rMax = 15;
-            const rMin = params.rs + 0.01;
-            for (let i = 0; i <= phiSteps; i++) {
-                const phi = (i / phiSteps) * 2 * Math.PI;
-                for (let j = 0; j <= rSteps; j++) {
-                    const r = rMin + (j / rSteps) * (rMax - rMin);
-                    const z = 2 * Math.sqrt(params.rs * (r - params.rs)) + Math.sin(phi + Date.now() * 0.001) * 0.2;
-                    vertices.push(r * Math.cos(phi), r * Math.sin(phi), z);
-                    const t = (r - rMin) / (rMax - rMin);
-                    colors.push(1 - t, 0, t);
-                }
-            }
-            for (let i = 0; i < phiSteps; i++) {
-                for (let j = 0; j < rSteps; j++) {
-                    const a = i * (rSteps + 1) + j;
-                    const b = a + 1;
-                    const c = (i + 1) * (rSteps + 1) + j;
-                    const d = c + 1;
-                    indices.push(a, b, b, d, d, c, c, a);
-                }
-            }
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-            geometry.setIndex(indices);
-            const material = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6 });
-            gridMesh = new THREE.LineSegments(geometry, material);
-            scene.add(gridMesh);
-        }
-        updateGrid();
-
-        // Accretion disk with Doppler shift
-        const diskGeometry = new THREE.RingGeometry(params.rs * 1.2, params.rs * 3, 64);
-        const diskMaterial = new THREE.ShaderMaterial({
-            uniforms: { time: { value: 0 }, glow: { value: params.diskGlow } },
-            vertexShader: `varying vec2 vUv; varying vec3 vPos; void main() { vUv = uv; vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-            fragmentShader: `uniform float time; uniform float glow; varying vec2 vUv; varying vec3 vPos; void main() { float intensity = sin(vUv.x * 20.0 + time * 2.0) * 0.5 + 0.5; float doppler = vPos.x > 0.0 ? 0.8 : 0.2; gl_FragColor = vec4(1.0 * doppler, 0.6, 0.1 * (1.0 - doppler), 0.8) * intensity * glow; }`,
-            transparent: true,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending
-        });
-        const disk = new THREE.Mesh(diskGeometry, diskMaterial);
-        disk.rotation.x = Math.PI / 2;
-        scene.add(disk);
-
-        // Hawking radiation particles
-        let particles;
-        function updateParticles() {
-            if (particles) scene.remove(particles);
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(params.particleCount * 3);
-            for (let i = 0; i < params.particleCount; i++) {
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.random() * Math.PI;
-                const r = params.rs * (1 + Math.random() * 0.3);
-                positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-                positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-                positions[i * 3 + 2] = r * Math.cos(phi);
-            }
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const material = new THREE.PointsMaterial({ color: 0xffffff, size: params.lowPoly ? 0.1 : 0.05, blending: THREE.AdditiveBlending });
-            particles = new THREE.Points(geometry, material);
-            scene.add(particles);
-        }
-        updateParticles();
-
-        // Relativistic jets
-        const jetMaterial = new THREE.PointsMaterial({ color: 0x00ffff, size: params.lowPoly ? 0.2 : 0.1, blending: THREE.AdditiveBlending });
-        const jetGeometry = new THREE.BufferGeometry();
-        const jetPositions = new Float32Array(100 * 3);
-        for (let i = 0; i < 100; i++) {
-            jetPositions[i * 3] = (Math.random() - 0.5) * 0.2;
-            jetPositions[i * 3 + 1] = (Math.random() - 0.5) * 0.2;
-            jetPositions[i * 3 + 2] = (i / 99) * 10;
-        }
-        jetGeometry.setAttribute('position', new THREE.BufferAttribute(jetPositions, 3));
-        const northJet = new THREE.Points(jetGeometry, jetMaterial);
-        scene.add(northJet);
-        const southJet = northJet.clone();
-        southJet.rotation.x = Math.PI;
-        scene.add(southJet);
-
-        // Photon paths
-        function updatePhotons() {
-            for (let i = 0; i < 5; i++) {
-                const photon = scene.getObjectByName(`photon${i}`);
-                if (photon) scene.remove(photon);
-            }
-            const material = new THREE.LineBasicMaterial({ color: 0xffff00 });
-            for (let k = 0; k < 5; k++) {
-                const points = [];
-                let r = 10, phi = k * (Math.PI * 2 / 5);
-                for (let t = 0; t < 100; t++) {
-                    const dr = -Math.sqrt(r * (r - params.rs)) * 0.05;
-                    phi += 0.1 / (r * r);
-                    r += dr;
-                    if (r < params.rs) break;
-                    points.push(new THREE.Vector3(r * Math.cos(phi), r * Math.sin(phi), Math.sin(t * 0.1) * 0.2));
-                }
-                const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                const line = new THREE.Line(geometry, material);
-                line.name = `photon${k}`;
-                scene.add(line);
-            }
-        }
-        updatePhotons();
-
-        // Orbiting stars with trails
-        const orbiters = [];
-        const trails = [];
-        for (let i = 0; i < 3; i++) {
-            const geo = new THREE.SphereGeometry(0.15, 16, 16);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-            const orbiter = new THREE.Mesh(geo, mat);
-            orbiter.position.set(5 + i * 2, 0, 0);
-            scene.add(orbiter);
-            const trailGeo = new THREE.BufferGeometry();
-            const trailPos = new Float32Array(100 * 3);
-            trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
-            const trailMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3 });
-            const trail = new THREE.Line(trailGeo, trailMat);
-            scene.add(trail);
-            orbiters.push({ mesh: orbiter, radius: 5 + i * 2, speed: 0.01 - i * 0.002, angle: Math.random() * Math.PI * 2 });
-            trails.push({ line: trail, positions: [], maxPoints: 100 });
-        }
-
-        // 3D equation text
-        const fontLoader = new THREE.FontLoader();
-        fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
-            const textGeometry = new THREE.TextGeometry('ds² = -(1 - 2GM/c²r)c²dt² + ...', {
-                font: font,
-                size: 0.5,
-                height: 0.1
-            });
-            const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-            textMesh.position.set(-5, 5, 5);
-            scene.add(textMesh);
-        });
-
-        // Gravitational lensing
-        const lensingGeometry = new THREE.PlaneGeometry(2, 2);
-        const lensingMaterial = new THREE.ShaderMaterial({
-            uniforms: { background: { value: bgTexture }, rs: { value: params.rs }, strength: { value: params.lensingStrength } },
-            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
-            fragmentShader: `uniform samplerCube background; uniform float rs; uniform float strength; varying vec2 vUv; void main() { vec2 uv = vUv * 2.0 - 1.0; float dist = length(uv); float deflection = (4.0 * rs / (dist + 0.01)) * strength; vec2 bentUv = uv * (1.0 - deflection); vec3 dir = normalize(vec3(bentUv, -1.0)); gl_FragColor = dist < rs / 10.0 ? vec4(0.0, 0.0, 0.0, 1.0) : textureCube(background, dir); }`,
-            depthWrite: false
-        });
-        const lensingQuad = new THREE.Mesh(lensingGeometry, lensingMaterial);
-        lensingQuad.position.z = -1;
-        scene.add(lensingQuad);
-
-        // Ambient audio
-        const listener = new THREE.AudioListener();
-        camera.add(listener);
-        const sound = new THREE.Audio(listener);
-        const audioLoader = new THREE.AudioLoader();
-        audioLoader.load('https://threejs.org/examples/sounds/358232_j_spt.flac', (buffer) => {
-            sound.setBuffer(buffer);
-            sound.setLoop(true);
-            sound.setVolume(0.3);
-            sound.play();
-        }, undefined, (err) => console.error('Audio error:', err));
-
-        // Raycaster for tooltips
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-        window.addEventListener('mousemove', (event) => {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects([horizon, disk, ...orbiters.map(o => o.mesh)]);
-            document.body.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
-        });
-
-        // HUD update
-        const hud = document.getElementById('hud');
-        function updateHUD() {
-            const temp = calcHawkingTemp(params.rs) * 1e20; // Scaled for display
-            hud.innerText = `Hawking Temp: ${temp.toFixed(2)} K | Particles: ${params.particleCount} | ${capturer ? 'Recording GIF...' : ''}`;
-        }
-        updateHUD();
-
-        // GIF capture
-        let capturer;
-        function startCapture() {
-            capturer = new CCapture({ format: 'gif', workersPath: 'https://unpkg.com/ccapture.js@1.1.0/src/', framerate: 30 });
-            capturer.start();
-            setTimeout(stopCapture, 10000);
-            updateHUD();
-        }
-        function stopCapture() {
-            capturer.stop();
-            capturer.save();
-            capturer = null;
-            updateHUD();
-        }
-
-        // Update scene
-        function updateScene() {
-            horizon.scale.set(params.rs / 2, params.rs / 2, params.rs / 2);
-            diskGeometry.parameters.innerRadius = params.rs * 1.2;
-            diskGeometry.parameters.outerRadius = params.rs * 3;
-            diskGeometry.dispose();
-            updateGrid();
-            updatePhotons();
-            updateParticles();
-            updateHUD();
-        }
-
-        // Camera position
-        camera.position.set(12, 12, 12);
-
-        // Animation loop
-        let time = 0;
-        function animate() {
-            requestAnimationFrame(animate);
-            time += 0.01;
-            horizonMaterial.uniforms.time.value = time;
-            gridMesh.rotation.y += params.rotationSpeed;
-            diskMaterial.uniforms.time.value = time;
-            diskMaterial.uniforms.glow.value = params.diskGlow;
-            lensingMaterial.uniforms.rs.value = params.rs;
-            lensingMaterial.uniforms.strength.value = params.lensingStrength;
-            const positions = particles.geometry.attributes.position.array;
-            for (let i = 0; i < params.particleCount; i++) {
-                positions[i * 3 + 2] += (Math.random() - 0.5) * 0.02;
-            }
-            particles.geometry.attributes.position.needsUpdate = true;
-            orbiters.forEach((orb, i) => {
-                orb.angle += orb.speed;
-                orb.mesh.position.x = orb.radius * Math.cos(orb.angle);
-                orb.mesh.position.y = orb.radius * Math.sin(orb.angle);
-                trails[i].positions.push(new THREE.Vector3(orb.mesh.position.x, orb.mesh.position.y, orb.mesh.position.z));
-                if (trails[i].positions.length > trails[i].maxPoints) trails[i].positions.shift();
-                trails[i].line.geometry.setFromPoints(trails[i].positions);
-            });
-            if (params.autoTour) {
-                camera.position.x = 12 * Math.sin(time * 0.1);
-                camera.position.y = 12 * Math.sin(time * 0.05) + 5;
-                camera.position.z = 12 * Math.cos(time * 0.1);
-                camera.lookAt(0, 0, 0);
-            }
-            controls.update();
-            composer.render();
-            if (capturer) capturer.capture(renderer.domElement);
-        }
-        animate();
-
-        // Resize
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            composer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
