@@ -1,872 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>2D Fortnite-like Concept - All in One</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-  body, html {
-    margin: 0; padding: 0; overflow: hidden;
-    background: #121212;
-    font-family: 'Press Start 2P', cursive;
-    color: #eee;
-    user-select: none;
-  }
-  #game-container {
-    position: relative;
-    width: 100vw; height: 100vh;
-    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-  }
-  canvas {
-    display: block;
-    margin: 0 auto;
-    background: #222;
-    border: 3px solid #444;
-    box-shadow: 0 0 10px #0af;
-    image-rendering: pixelated;
-  }
-  #hud {
-    position: absolute;
-    top: 20px; left: 20px;
-    font-size: 14px;
-    background: rgba(0,0,0,0.6);
-    padding: 6px 10px;
-    border-radius: 6px;
-    color: #0ff;
-    user-select: none;
-    min-width: 140px;
-  }
-  #storm-warning {
-    position: absolute;
-    top: 20px; right: 20px;
-    font-size: 14px;
-    background: rgba(255,0,0,0.8);
-    padding: 6px 12px;
-    border-radius: 6px;
-    color: #fff;
-    font-weight: bold;
-    display: none;
-    user-select: none;
-  }
-  #ui {
-    position: absolute;
-    bottom: 20px; left: 50%; transform: translateX(-50%);
-    width: 90%;
-    max-width: 800px;
-    display: flex; justify-content: center;
-    gap: 10px;
-  }
-  .inventory-slot {
-    width: 64px; height: 64px;
-    border: 3px solid #444;
-    background: #111;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 0 5px #00ffff44;
-    transition: border-color 0.3s ease;
-  }
-  .inventory-slot.selected {
-    border-color: #0ff;
-    box-shadow: 0 0 12px #0ff;
-  }
-  .inventory-icon {
-    width: 40px; height: 40px;
-    margin-bottom: 4px;
-    image-rendering: pixelated;
-  }
-  .inventory-name {
-    font-size: 8px;
-    text-align: center;
-    color: #0ff;
-    user-select: none;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <title>Neural Network Animation</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0d0d0d;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="gameCanvas" width="900" height="600"></canvas>
-    <div id="hud">Health: 100 | Shield: 0</div>
-    <div id="storm-warning">STORM DAMAGE!</div>
-    <div id="ui"></div>
-  </div>
+<canvas id="nn"></canvas>
 
 <script>
-(() => {
-  // Setup canvas & context
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
+const canvas = document.getElementById("nn");
+const ctx = canvas.getContext("2d");
 
-  // Game variables
-  const TILE_SIZE = 48;
-  const MAP_WIDTH = 40;  // 40 tiles wide
-  const MAP_HEIGHT = 30; // 30 tiles tall
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-  // Camera for scrolling
-  const camera = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+window.addEventListener("resize", () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
 
-  // Player object
-  const player = {
-    x: MAP_WIDTH * TILE_SIZE / 2,
-    y: MAP_HEIGHT * TILE_SIZE / 2,
-    width: 40,
-    height: 48,
-    speed: 3,
-    health: 100,
-    shield: 0,
-    inventory: [],
-    selectedIndex: 0,
-    holding: null,
-    reloadTime: 0,
-  };
-
-  // Storm circle (shrinks over time)
-  const storm = {
-    x: MAP_WIDTH * TILE_SIZE / 2,
-    y: MAP_HEIGHT * TILE_SIZE / 2,
-    radius: 800,
-    shrinkRate: 0.05,
-  };
-
-  // Keyboard input
-  const keys = {};
-  window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-  // Basic map array: 0=empty,1=wall/building
-  const map = new Array(MAP_HEIGHT).fill(0).map(() => new Array(MAP_WIDTH).fill(0));
-
-  // Simple buildings/houses generation: rectangles on map
-  const houses = [];
-  function generateHouses() {
-    for (let i=0; i<12; i++) {
-      const w = 5 + Math.floor(Math.random()*4);
-      const h = 4 + Math.floor(Math.random()*3);
-      const x = 1 + Math.floor(Math.random()*(MAP_WIDTH - w - 1));
-      const y = 1 + Math.floor(Math.random()*(MAP_HEIGHT - h -1));
-      houses.push({x,y,w,h});
-      for(let yy=y; yy<y+h; yy++) {
-        for(let xx=x; xx<x+w; xx++) {
-          // Walls around the edges
-          if(xx===x || xx===x+w-1 || yy===y || yy===y+h-1) {
-            map[yy][xx] = 1;
-          }
-        }
-      }
-    }
-  }
-  generateHouses();
-
-  // Chests spawn inside houses
-  const chests = [];
-  function generateChests() {
-    for(const house of houses) {
-      // Place one chest inside house (not on wall)
-      const cx = house.x + 1 + Math.floor(Math.random()*(house.w-2));
-      const cy = house.y + 1 + Math.floor(Math.random()*(house.h-2));
-      chests.push({x: cx, y: cy, loot: generateLoot()});
-    }
+class Node {
+  constructor(x, y, layer) {
+    this.x = x;
+    this.y = y;
+    this.layer = layer;
+    this.radius = 15;
+    this.active = false;
   }
 
-  // Loot table for chests
-  function generateLoot() {
-    // Weapons and items
-    const lootPool = [
-      {name: "Assault Rifle", type: "weapon", damage: 15, range: 250, ammo: 30, icon: "🔫"},
-      {name: "Shotgun", type: "weapon", damage: 40, range: 100, ammo: 8, icon: "🦾"},
-      {name: "SMG", type: "weapon", damage: 10, range: 180, ammo: 40, icon: "🤖"},
-      {name: "Medkit", type: "heal", heal: 50, icon: "❤️"},
-      {name: "Shield Potion", type: "shield", shield: 25, icon: "🛡️"},
-    ];
-    // Pick 1-3 random loot
-    const count = 1 + Math.floor(Math.random()*3);
-    const loot = [];
-    for(let i=0; i<count; i++) {
-      loot.push(lootPool[Math.floor(Math.random()*lootPool.length)]);
-    }
-    return loot;
-  }
-
-  generateChests();
-
-  // AI bots
-  const bots = [];
-  const BOT_COUNT = 6;
-  function spawnBots() {
-    for(let i=0; i<BOT_COUNT; i++) {
-      bots.push({
-        x: Math.random()*MAP_WIDTH*TILE_SIZE,
-        y: Math.random()*MAP_HEIGHT*TILE_SIZE,
-        width: 40, height: 48,
-        speed: 2,
-        health: 100,
-        target: null,
-        reloadTime: 0,
-        inventory: [{name: "SMG", type: "weapon", damage: 10, range: 180, ammo: 40, icon: "🤖"}],
-        selectedIndex: 0,
-      });
-    }
-  }
-  spawnBots();
-
-  // Inventory UI container
-  const uiContainer = document.getElementById('ui');
-  const hud = document.getElementById('hud');
-  const stormWarning = document.getElementById('storm-warning');
-
-  // Player inventory starts empty, add default weapon
-  player.inventory.push({name:"Pistol", type:"weapon", damage:8, range:150, ammo:15, icon:"🔫"});
-
-  // Helper functions
-  function drawRect(x,y,w,h,color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x,y,w,h);
-  }
-  function drawText(text,x,y,color="white",font="12px monospace") {
-    ctx.fillStyle = color;
-    ctx.font = font;
-    ctx.fillText(text,x,y);
-  }
-
-  // Distance helper
-  function dist(ax,ay,bx,by) {
-    return Math.hypot(bx-ax,by-ay);
-  }
-
-  // Clamp function
-  function clamp(val,min,max) {
-    return Math.min(Math.max(val,min),max);
-  }
-
-  // Inventory UI rendering
-  function renderInventory() {
-    uiContainer.innerHTML = '';
-    player.inventory.forEach((item, i) => {
-      const slot = document.createElement('div');
-      slot.className = 'inventory-slot' + (i === player.selectedIndex ? ' selected' : '');
-      slot.addEventListener('click', () => {
-        player.selectedIndex = i;
-        player.holding = player.inventory[player.selectedIndex];
-        renderInventory();
-      });
-      // Icon (emoji)
-      const icon = document.createElement('div');
-      icon.className = 'inventory-icon';
-      icon.style.fontSize = '32px';
-      icon.style.textAlign = 'center';
-      icon.textContent = item.icon;
-      slot.appendChild(icon);
-
-      // Name
-      const name = document.createElement('div');
-      name.className = 'inventory-name';
-      name.textContent = item.name;
-      slot.appendChild(name);
-
-      uiContainer.appendChild(slot);
-    });
-  }
-  player.holding = player.inventory[player.selectedIndex];
-  renderInventory();
-
-  // Movement collision check with walls
-  function canMove(x,y) {
-    // Check corners for collision with map walls
-    const corners = [
-      {x: x - player.width/2, y: y - player.height/2},
-      {x: x + player.width/2, y: y - player.height/2},
-      {x: x - player.width/2, y: y + player.height/2},
-      {x: x + player.width/2, y: y + player.height/2},
-    ];
-    for(const c of corners) {
-      const tileX = Math.floor(c.x / TILE_SIZE);
-      const tileY = Math.floor(c.y / TILE_SIZE);
-      if(tileX<0 || tileX>=MAP_WIDTH || tileY<0 || tileY>=MAP_HEIGHT) return false;
-      if(map[tileY][tileX] === 1) return false;
-    }
-    return true;
-  }
-
-  // Player shooting cooldown in ms
-  const PLAYER_RELOAD = 500;
-
-  // Bullets array
-  const bullets = [];
-
-  // Shoot bullet function
-  function shootBullet(shooter, targetX, targetY) {
-    if(shooter.reloadTime > 0) return;
-    const weapon = shooter.inventory[shooter.selectedIndex];
-    if(!weapon || weapon.type !== "weapon" || weapon.ammo <= 0) return;
-
-    // Calculate direction vector
-    const dx = targetX - shooter.x;
-    const dy = targetY - shooter.y;
-    const distV = Math.hypot(dx,dy);
-    if(distV === 0) return;
-
-    const speed = 15;
-    bullets.push({
-      x: shooter.x,
-      y: shooter.y,
-      vx: (dx/distV)*speed,
-      vy: (dy/distV)*speed,
-      damage: weapon.damage,
-      range: weapon.range,
-      traveled: 0,
-      shooter,
-    });
-
-    weapon.ammo--;
-    shooter.reloadTime = PLAYER_RELOAD;
-  }
-
-  // Player healing & shield logic
-  function useItem(item) {
-    if(item.type === "heal") {
-      player.health = clamp(player.health + item.heal, 0, 100);
-      removeSelectedItem();
-    } else if(item.type === "shield") {
-      player.shield = clamp(player.shield + item.shield, 0, 100);
-      removeSelectedItem();
-    }
-  }
-  function removeSelectedItem() {
-    player.inventory.splice(player.selectedIndex,1);
-    if(player.selectedIndex >= player.inventory.length) {
-      player.selectedIndex = player.inventory.length-1;
-    }
-    if(player.selectedIndex < 0) player.selectedIndex=0;
-    player.holding = player.inventory[player.selectedIndex] || null;
-    renderInventory();
-  }
-
-  // Storm damage ticks
-  let lastStormDamage = 0;
-
-  // Main game loop
-  function gameLoop(timestamp=0) {
-    // Clear canvas
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // Update reload timers
-    if(player.reloadTime > 0) player.reloadTime -= 16;
-    bots.forEach(bot => { if(bot.reloadTime>0) bot.reloadTime -=16; });
-
-    // Player movement
-    let moveX=0, moveY=0;
-    if(keys['w'] || keys['arrowup']) moveY = -player.speed;
-    if(keys['s'] || keys['arrowdown']) moveY = player.speed;
-    if(keys['a'] || keys['arrowleft']) moveX = -player.speed;
-    if(keys['d'] || keys['arrowright']) moveX = player.speed;
-
-    // Normalize diagonal movement
-    if(moveX!==0 && moveY!==0) {
-      moveX *= 0.707;
-      moveY *= 0.707;
-    }
-
-    // Check collision for player movement
-    let newX = player.x + moveX;
-    let newY = player.y + moveY;
-    if(canMove(newX, player.y)) player.x = newX;
-    if(canMove(player.x, newY)) player.y = newY;
-
-    // Camera follows player, centered
-    camera.x = clamp(player.x - camera.width/2, 0, MAP_WIDTH*TILE_SIZE - camera.width);
-    camera.y = clamp(player.y - camera.height/2, 0, MAP_HEIGHT*TILE_SIZE - camera.height);
-
-    // Update storm radius (shrinks)
-    storm.radius -= storm.shrinkRate;
-    if(storm.radius < 100) storm.radius = 100;
-
-    // Storm damage if outside safe circle
-    const dStorm = dist(player.x, player.y, storm.x, storm.y);
-    if(dStorm > storm.radius) {
-      if(timestamp - lastStormDamage > 1000) {
-        player.health -= 5;
-        lastStormDamage = timestamp;
-        stormWarning.style.display = 'block';
-      }
-    } else {
-      stormWarning.style.display = 'none';
-    }
-
-    // Player death check
-    if(player.health <= 0) {
-      alert("You died! Reload the page to restart.");
-      return;
-    }
-
-    // AI bots behavior (basic random movement & shooting player)
-    bots.forEach(bot => {
-      // Simple random walk
-      if(!bot.dirChangeTime || timestamp > bot.dirChangeTime) {
-        bot.vx = (Math.random()-0.5)*bot.speed*2;
-        bot.vy = (Math.random()-0.5)*bot.speed*2;
-        bot.dirChangeTime = timestamp + 2000 + Math.random()*3000;
-      }
-      let botNewX = bot.x + bot.vx;
-      let botNewY = bot.y + bot.vy;
-      if(canMove(botNewX, bot.y)) bot.x = botNewX;
-      else bot.vx = -bot.vx;
-      if(canMove(bot.x, botNewY)) bot.y = botNewY;
-      else bot.vy = -bot.vy;
-
-      // Shooting at player if in range & line of sight
-      const dx = player.x - bot.x;
-      const dy = player.y - bot.y;
-      const distToPlayer = Math.hypot(dx, dy);
-      const weapon = bot.inventory[bot.selectedIndex];
-      if(weapon && weapon.type === "weapon" && weapon.ammo > 0 && distToPlayer < weapon.range) {
-        shootBullet(bot, player.x, player.y);
-      }
-    });
-
-    // Update bullets
-    for(let i=bullets.length-1; i>=0; i--) {
-      const b = bullets[i];
-      b.x += b.vx;
-      b.y += b.vy;
-      b.traveled += Math.hypot(b.vx, b.vy);
-
-      // Remove if out of range or out of map
-      if(b.traveled > b.range ||
-         b.x < 0 || b.x > MAP_WIDTH*TILE_SIZE ||
-         b.y < 0 || b.y > MAP_HEIGHT*TILE_SIZE) {
-        bullets.splice(i,1);
-        continue;
-      }
-
-      // Check collision with walls
-      const tileX = Math.floor(b.x / TILE_SIZE);
-      const tileY = Math.floor(b.y / TILE_SIZE);
-      if(tileX>=0 && tileX<MAP_WIDTH && tileY>=0 && tileY<MAP_HEIGHT && map[tileY][tileX] === 1) {
-        bullets.splice(i,1);
-        continue;
-      }
-
-      // Check hit on player or bots
-      if(b.shooter !== player &&
-         b.x > player.x - player.width/2 && b.x < player.x + player.width/2 &&
-         b.y > player.y - player.height/2 && b.y < player.y + player.height/2) {
-        // Damage shield first, then health
-        if(player.shield > 0) {
-          player.shield -= b.damage;
-          if(player.shield < 0) {
-            player.health += player.shield; // negative shield left applies to health
-            player.shield = 0;
-          }
-        } else {
-          player.health -= b.damage;
-        }
-        bullets.splice(i,1);
-        continue;
-      }
-
-      for(const bot of bots) {
-        if(b.shooter !== bot &&
-           b.x > bot.x - bot.width/2 && b.x < bot.x + bot.width/2 &&
-           b.y > bot.y - bot.height/2 && b.y < bot.y + bot.height/2) {
-          bot.health -= b.damage;
-          bullets.splice(i,1);
-          break;
-        }
-      }
-    }
-
-    // Remove dead bots
-    for(let i=bots.length-1; i>=0; i--) {
-      if(bots[i].health <= 0) {
-        bots.splice(i,1);
-      }
-    }
-
-    // Player shooting on mouse click handled separately
-
-    // Draw map tiles
-    for(let y=0; y<MAP_HEIGHT; y++) {
-      for(let x=0; x<MAP_WIDTH; x++) {
-        const screenX = x*TILE_SIZE - camera.x;
-        const screenY = y*TILE_SIZE - camera.y;
-        if(map[y][x] === 1) {
-          drawRect(screenX, screenY, TILE_SIZE, TILE_SIZE, '#444');
-          // walls shading
-          ctx.strokeStyle = '#666';
-          ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
-        } else {
-          // ground
-          drawRect(screenX, screenY, TILE_SIZE, TILE_SIZE, '#1a2a3a');
-        }
-      }
-    }
-
-    // Draw chests
-    chests.forEach(chest => {
-      const cx = chest.x * TILE_SIZE - camera.x + TILE_SIZE/2;
-      const cy = chest.y * TILE_SIZE - camera.y + TILE_SIZE/2;
-      ctx.fillStyle = '#cc9';
-      ctx.beginPath();
-      ctx.rect(cx-12, cy-12, 24, 24);
-      ctx.fill();
-      ctx.strokeStyle = '#660';
-      ctx.strokeRect(cx-12, cy-12, 24, 24);
-      // chest icon
-      ctx.fillStyle = '#660';
-      ctx.font = '18px monospace';
-      ctx.fillText('📦', cx-12, cy+8);
-    });
-
-    // Draw storm circle
-    ctx.strokeStyle = 'rgba(255,0,0,0.6)';
-    ctx.lineWidth = 5;
+  draw() {
     ctx.beginPath();
-    ctx.arc(storm.x - camera.x, storm.y - camera.y, storm.radius, 0, Math.PI*2);
-    ctx.stroke();
-
-    // Draw player
-    const px = player.x - camera.x;
-    const py = player.y - camera.y;
-    drawRect(px - player.width/2, py - player.height/2, player.width, player.height, '#00ffff');
-    ctx.strokeStyle = '#0ff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px - player.width/2, py - player.height/2, player.width, player.height);
-
-    // Draw player holding item above player
-    if(player.holding) {
-      ctx.font = '30px monospace';
-      ctx.fillStyle = '#0ff';
-      ctx.fillText(player.holding.icon, px - 10, py - player.height/2 - 10);
-    }
-
-    // Draw bots
-    bots.forEach(bot => {
-      const bx = bot.x - camera.x;
-      const by = bot.y - camera.y;
-      drawRect(bx - bot.width/2, by - bot.height/2, bot.width, bot.height, '#f90');
-      ctx.strokeStyle = '#fa0';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(bx - bot.width/2, by - bot.height/2, bot.width, bot.height);
-
-      // Bot health bar
-      ctx.fillStyle = '#0f0';
-      const healthW = (bot.health / 100) * bot.width;
-      ctx.fillRect(bx - bot.width/2, by - bot.height/2 - 8, healthW, 4);
-
-      // Bot holding weapon icon
-      const botWeapon = bot.inventory[bot.selectedIndex];
-      if(botWeapon) {
-        ctx.font = '22px monospace';
-        ctx.fillStyle = '#fa0';
-        ctx.fillText(botWeapon.icon, bx - 12, by - bot.height/2 - 14);
-      }
-    });
-
-    // Draw bullets
-    ctx.fillStyle = '#fff';
-    bullets.forEach(b => {
-      ctx.beginPath();
-      ctx.arc(b.x - camera.x, b.y - camera.y, 4, 0, Math.PI*2);
-      ctx.fill();
-    });
-
-    // HUD update
-    healthBar.style.width = player.health + '%';
-    shieldBar.style.width = player.shield + '%';
-    ammoCount.textContent = player.holding && player.holding.type === 'weapon' ? `Ammo: ${player.holding.ammo}` : '';
-
-    requestAnimationFrame(gameLoop);
-  }
-
-  // Event listeners for player control
-  window.addEventListener('keydown', e => {
-    keys[e.key.toLowerCase()] = true;
-
-    // Number keys to select inventory slot
-    if(e.key >= '1' && e.key <= '9') {
-      const index = parseInt(e.key) - 1;
-      if(index < player.inventory.length) {
-        player.selectedIndex = index;
-        player.holding = player.inventory[player.selectedIndex];
-        renderInventory();
-      }
-    }
-
-    // Use item with E key
-    if(e.key.toLowerCase() === 'e') {
-      const item = player.holding;
-      if(item && (item.type === 'heal' || item.type === 'shield')) {
-        useItem(item);
-      }
-    }
-  });
-
-  window.addEventListener('keyup', e => {
-    keys[e.key.toLowerCase()] = false;
-  });
-
-  // Shoot on mouse click
-  canvas.addEventListener('mousedown', e => {
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left + camera.x;
-    const mouseY = e.clientY - rect.top + camera.y;
-    shootBullet(player, mouseX, mouseY);
-  });
-
-  // Initial render of inventory and start game loop
-  renderInventory();
-  requestAnimationFrame(gameLoop);
-</script>
-</body>
-</html>Here's a complete, minimal example of a simple 2D shooter game in HTML5 canvas with these features:
-
-- Player can move with WASD or arrow keys.
-- Player can shoot bullets toward the mouse pointer by clicking.
-- Player has an inventory with 3 items (health pack, shield pack, and pistol).
-- Use the number keys 1-3 to select an item.
-- Press E to use the selected consumable item (heal or shield).
-- Player has health, shield, and ammo UI displayed.
-- Bullets move and disappear after traveling a certain distance.
-
-You can save this as an `.html` file and open in any modern browser:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Simple 2D Shooter</title>
-<style>
-  body { margin: 0; background: #111; color: white; font-family: monospace; }
-  #gameCanvas { background: #222; display: block; margin: auto; }
-  #ui {
-    position: fixed;
-    top: 10px; left: 10px;
-    background: rgba(0,0,0,0.6);
-    padding: 10px;
-    border-radius: 8px;
-    width: 200px;
-  }
-  #inventory {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 10px;
-  }
-  .invSlot {
-    border: 1px solid white;
-    padding: 5px;
-    cursor: pointer;
-    user-select: none;
-    flex: 1;
-    margin: 0 2px;
-    text-align: center;
-    border-radius: 4px;
-  }
-  .selected {
-    background: #09f;
-  }
-  #healthBar, #shieldBar {
-    height: 12px;
-    background: red;
-    margin-top: 5px;
-    border-radius: 6px;
-  }
-  #shieldBar {
-    background: blue;
-    margin-top: 3px;
-  }
-</style>
-</head>
-<body>
-
-<canvas id="gameCanvas" width="800" height="600"></canvas>
-
-<div id="ui">
-  <div>Health</div>
-  <div id="healthBar"></div>
-  <div>Shield</div>
-  <div id="shieldBar"></div>
-  <div id="ammoCount" style="margin-top:8px;">Ammo: 0</div>
-
-  <div id="inventory"></div>
-  <div style="margin-top:10px;">Use item: Press <b>E</b>, Select slot: <b>1-3</b></div>
-</div>
-
-<script>
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
-
-  const healthBar = document.getElementById('healthBar');
-  const shieldBar = document.getElementById('shieldBar');
-  const ammoCount = document.getElementById('ammoCount');
-  const inventoryDiv = document.getElementById('inventory');
-
-  const keys = {};
-
-  const player = {
-    x: canvas.width/2,
-    y: canvas.height/2,
-    speed: 4,
-    size: 20,
-    health: 100,
-    maxHealth: 100,
-    shield: 50,
-    maxShield: 50,
-    inventory: [
-      {name: 'Health Pack', type: 'heal', amount: 30, quantity: 2},
-      {name: 'Shield Pack', type: 'shield', amount: 25, quantity: 1},
-      {name: 'Pistol', type: 'weapon', ammo: 12, maxAmmo: 12}
-    ],
-    selectedIndex: 2,
-    holding: null,
-  };
-
-  player.holding = player.inventory[player.selectedIndex];
-
-  const bullets = [];
-
-  function renderInventory() {
-    inventoryDiv.innerHTML = '';
-    player.inventory.forEach((item, i) => {
-      const slot = document.createElement('div');
-      slot.classList.add('invSlot');
-      if(i === player.selectedIndex) slot.classList.add('selected');
-      slot.textContent = `${i+1}: ${item.name} ${item.quantity !== undefined ? '(' + item.quantity + ')' : ''}`;
-      slot.onclick = () => {
-        player.selectedIndex = i;
-        player.holding = player.inventory[player.selectedIndex];
-        renderInventory();
-      };
-      inventoryDiv.appendChild(slot);
-    });
-  }
-
-  function useItem(item) {
-    if(!item) return;
-    if(item.quantity !== undefined && item.quantity <= 0) return alert('No more of that item!');
-    if(item.type === 'heal') {
-      player.health = Math.min(player.maxHealth, player.health + item.amount);
-      item.quantity--;
-      renderInventory();
-    } else if(item.type === 'shield') {
-      player.shield = Math.min(player.maxShield, player.shield + item.amount);
-      item.quantity--;
-      renderInventory();
-    }
-  }
-
-  function shootBullet(shooter, targetX, targetY) {
-    if(!shooter.holding || shooter.holding.type !== 'weapon') return;
-    if(shooter.holding.ammo <= 0) {
-      alert('Out of ammo!');
-      return;
-    }
-    shooter.holding.ammo--;
-    renderInventory();
-
-    const angle = Math.atan2(targetY - shooter.y, targetX - shooter.x);
-    bullets.push({
-      x: shooter.x,
-      y: shooter.y,
-      dx: Math.cos(angle) * 10,
-      dy: Math.sin(angle) * 10,
-      size: 5,
-      distanceTravelled: 0,
-      maxDistance: 400,
-    });
-  }
-
-  function drawPlayer() {
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    const gradient = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, this.radius);
+    gradient.addColorStop(0, this.active ? "#00ffcc" : "#444");
+    gradient.addColorStop(1, "#000");
+    ctx.fillStyle = gradient;
     ctx.fill();
   }
+}
 
-  function drawBullets() {
-    ctx.fillStyle = 'yellow';
-    bullets.forEach(b => {
+class Connection {
+  constructor(n1, n2) {
+    this.n1 = n1;
+    this.n2 = n2;
+    this.signals = [];
+  }
+
+  draw() {
+    ctx.strokeStyle = "rgba(0,255,200,0.2)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.n1.x, this.n1.y);
+    ctx.lineTo(this.n2.x, this.n2.y);
+    ctx.stroke();
+
+    // Draw signals
+    this.signals.forEach((s, i) => {
+      const x = this.n1.x + (this.n2.x - this.n1.x) * s.t;
+      const y = this.n1.y + (this.n2.y - this.n1.y) * s.t;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.size, 0, Math.PI*2);
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#00ffcc";
       ctx.fill();
+      s.t += 0.02;
+      if (s.t > 1) this.signals.splice(i, 1);
     });
   }
 
-  function updateBullets() {
-    for(let i = bullets.length-1; i >= 0; i--) {
-      let b = bullets[i];
-      b.x += b.dx;
-      b.y += b.dy;
-      b.distanceTravelled += Math.sqrt(b.dx*b.dx + b.dy*b.dy);
-      if(b.distanceTravelled > b.maxDistance) {
-        bullets.splice(i, 1);
+  sendSignal() {
+    this.signals.push({ t: 0 });
+  }
+}
+
+// Create layers of nodes
+let layers = 4;
+let nodesPerLayer = [4, 6, 6, 3];
+let network = [];
+let connections = [];
+
+function buildNetwork() {
+  network = [];
+  connections = [];
+  for (let l = 0; l < layers; l++) {
+    let layer = [];
+    let spacing = canvas.height / (nodesPerLayer[l] + 1);
+    for (let i = 0; i < nodesPerLayer[l]; i++) {
+      let x = (l + 1) * (canvas.width / (layers + 1));
+      let y = (i + 1) * spacing;
+      layer.push(new Node(x, y, l));
+    }
+    network.push(layer);
+  }
+
+  // Connect layers
+  for (let l = 0; l < network.length - 1; l++) {
+    for (let n1 of network[l]) {
+      for (let n2 of network[l + 1]) {
+        connections.push(new Connection(n1, n2));
       }
     }
   }
+}
 
-  function gameLoop() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+buildNetwork();
 
-    // Move player
-    if(keys['w'] || keys['arrowup']) player.y -= player.speed;
-    if(keys['a'] || keys['arrowleft']) player.x -= player.speed;
-    if(keys['s'] || keys['arrowdown']) player.y += player.speed;
-    if(keys['d'] || keys['arrowright']) player.x += player.speed;
+// Animate
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Clamp player inside canvas
-    player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
-    player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+  // Draw connections
+  connections.forEach(c => c.draw());
 
-    drawPlayer();
-    updateBullets();
-    drawBullets();
+  // Draw nodes
+  network.flat().forEach(n => n.draw());
 
-    // Update UI bars
-    healthBar.style.width = (player.health/player.maxHealth)*100 + '%';
-    shieldBar.style.width = (player.shield/player.maxShield)*100 + '%';
+  requestAnimationFrame(animate);
+}
+animate();
 
-    ammoCount.textContent = player.holding && player.holding.type === 'weapon' 
-      ? `Ammo: ${player.holding.ammo}/${player.holding.maxAmmo}` : 'Ammo: N/A';
+// Random activation
+setInterval(() => {
+  let inputLayer = network[0];
+  let randNode = inputLayer[Math.floor(Math.random() * inputLayer.length)];
+  randNode.active = true;
 
-    requestAnimationFrame(gameLoop);
-  }
-
-  // Input handling
-  window.addEventListener('keydown', e => {
-    keys[e.key.toLowerCase()] = true;
-
-    if(e.key >= '1' && e.key <= '9') {
-      const idx = parseInt(e.key) - 1;
-      if(idx < player.inventory.length) {
-        player.selectedIndex = idx;
-        player.holding = player.inventory[player.selectedIndex];
-        renderInventory();
-      }
-    }
-
-    if(e.key.toLowerCase() === 'e') {
-      useItem(player.holding);
-    }
+  // propagate signals
+  network.forEach((layer, l) => {
+    setTimeout(() => {
+      layer.forEach(node => {
+        node.active = Math.random() < 0.8; // random activation
+        if (l < network.length - 1) {
+          connections
+            .filter(c => c.n1 === node)
+            .forEach(c => {
+              if (node.active) c.sendSignal();
+            });
+        }
+      });
+    }, l * 400);
   });
 
-  window.addEventListener('keyup', e => {
-    keys[e.key.toLowerCase()] = false;
-  });
-
-  // Shoot bullet on mouse click
-  canvas.addEventListener('mousedown', e => {
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    shootBullet(player, mouseX, mouseY);
-  });
-
-  renderInventory();
-  requestAnimationFrame(gameLoop);
+  // Reset after some time
+  setTimeout(() => {
+    network.flat().forEach(n => (n.active = false));
+  }, 2000);
+}, 1200);
 </script>
 </body>
 </html>
